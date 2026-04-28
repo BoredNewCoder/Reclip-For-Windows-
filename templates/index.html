@@ -635,7 +635,7 @@
         <div class="card-thumb">${thumbHtml}</div>
         <div class="card-body">
           <div class="card-title">${esc(c.title || 'Untitled')}</div>
-          <div class="card-meta">${c.source ? esc(c.source) + ' · ' : ''}${esc(c.uploader)}${c.duration ? ' · ' + fmtDur(c.duration) : ''}</div>
+          <div class="card-meta">${c.source ? esc(c.source) + ' · ' : ''}${c.uploader ? esc(c.uploader) + (c.duration ? ' · ' : '') : ''}${c.duration ? fmtDur(c.duration) : ''}</div>
           <div class="card-actions">${actionHtml}</div>
         </div>
       `;
@@ -716,15 +716,6 @@
           renderCard(idx);
         }
       }, 1000);
-    }
-
-    function saveCard(idx) {
-      const c = cardData[idx];
-      if (!c.jobId) return;
-      const a = document.createElement('a');
-      a.href = `/api/file/${c.jobId}`;
-      a.download = c.filename || '';
-      a.click();
     }
 
     async function loadCookieStatus() {

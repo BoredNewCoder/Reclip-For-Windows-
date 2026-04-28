@@ -8,6 +8,7 @@ import sqlite3
 import tempfile
 import subprocess
 import threading
+import time
 from html import unescape
 from flask import Flask, request, jsonify, send_file, render_template
 
@@ -88,7 +89,12 @@ def run_download(job_id, url, format_choice, format_id):
         else:
             final_name = os.path.basename(chosen)
 
+        stem, suffix = os.path.splitext(final_name)
         final_path = os.path.join(DOWNLOAD_DIR, final_name)
+        counter = 1
+        while os.path.exists(final_path) and final_path != chosen:
+            final_path = os.path.join(DOWNLOAD_DIR, f"{stem} ({counter}){suffix}")
+            counter += 1
         if final_path != chosen:
             try:
                 os.replace(chosen, final_path)
@@ -127,18 +133,26 @@ def get_info():
 
         info = json.loads(result.stdout)
 
+        if info.get("_has_drm"):
+            return jsonify({"error": "This video is DRM-protected and cannot be downloaded."}), 400
+
+        def is_video_fmt(f):
+            vcodec = f.get("vcodec") or "none"
+            video_ext = f.get("video_ext") or "none"
+            return vcodec not in ("none", "") or video_ext not in ("none", "")
+
+        def is_audio_fmt(f):
+            audio_ext = f.get("audio_ext") or "none"
+            return audio_ext not in ("none", "")
+
         # Build quality options — keep best landscape format per resolution
+        all_formats = info.get("formats", [])
         best_by_height = {}
-        for f in info.get("formats", []):
+        for f in all_formats:
             height = f.get("height")
-            if not height:
+            if not height or not is_video_fmt(f):
                 continue
-            # Must be a video format — check vcodec or video_ext
-            has_video = (f.get("vcodec", "none") not in ("none", "")) or \
-                        (f.get("video_ext", "none") not in ("none", ""))
-            if not has_video:
-                continue
-            # Skip portrait orientations (aspect ratio < 1)
+            # Skip portrait orientations
             width = f.get("width") or 0
             if width and width < height:
                 continue
@@ -155,16 +169,7 @@ def get_info():
             })
         formats.sort(key=lambda x: x["height"], reverse=True)
 
-        if info.get("_has_drm"):
-            return jsonify({"error": "This video is DRM-protected and cannot be downloaded."}), 400
-
-        all_formats = info.get("formats", [])
-        has_any = bool(formats) or any(
-            f.get("audio_ext", "none") not in (None, "none", "") or
-            f.get("video_ext", "none") not in (None, "none", "")
-            for f in all_formats
-        )
-        if not has_any:
+        if not formats and not any(is_video_fmt(f) or is_audio_fmt(f) for f in all_formats):
             return jsonify({"error": "No downloadable formats found."}), 400
 
         return jsonify({
@@ -194,8 +199,13 @@ def start_download():
     if not url:
         return jsonify({"error": "No URL provided"}), 400
 
+    # Prune jobs older than 1 hour
+    cutoff = time.time() - 3600
+    for jid in [k for k, v in jobs.items() if v.get("created", 0) < cutoff]:
+        jobs.pop(jid, None)
+
     job_id = uuid.uuid4().hex[:10]
-    jobs[job_id] = {"status": "downloading", "url": url, "title": title, "uploader": uploader, "source": source}
+    jobs[job_id] = {"status": "downloading", "url": url, "title": title, "uploader": uploader, "source": source, "created": time.time()}
 
     thread = threading.Thread(target=run_download, args=(job_id, url, format_choice, format_id))
     thread.daemon = True
@@ -240,15 +250,17 @@ def firefox_sqlite_to_netscape(sqlite_path):
     shutil.copy2(sqlite_path, tmp_path)
     try:
         con = sqlite3.connect(tmp_path)
-        cur = con.execute(
-            "SELECT host, path, isSecure, expiry, name, value FROM moz_cookies"
-        )
-        lines = ["# Netscape HTTP Cookie File"]
-        for host, path, secure, expiry, name, value in cur.fetchall():
-            include_sub = "TRUE" if host.startswith(".") else "FALSE"
-            secure_str = "TRUE" if secure else "FALSE"
-            lines.append(f"{host}\t{include_sub}\t{path}\t{secure_str}\t{expiry}\t{name}\t{value}")
-        con.close()
+        try:
+            cur = con.execute(
+                "SELECT host, path, isSecure, expiry, name, value FROM moz_cookies"
+            )
+            lines = ["# Netscape HTTP Cookie File"]
+            for host, path, secure, expiry, name, value in cur.fetchall():
+                include_sub = "TRUE" if host.startswith(".") else "FALSE"
+                secure_str = "TRUE" if secure else "FALSE"
+                lines.append(f"{host}\t{include_sub}\t{path}\t{secure_str}\t{expiry}\t{name}\t{value}")
+        finally:
+            con.close()
         return "\n".join(lines)
     finally:
         os.unlink(tmp_path)

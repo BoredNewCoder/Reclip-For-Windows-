@@ -48,5 +48,6 @@ The cookie bar shows **Cookies active** in green when unlocked. Cookies can be r
 
 - Port can be changed: `set PORT=9000 && reclip.bat`
 - Downloads saved to `downloads\` folder with filename format: `Title - Channel - Source.mp4`
+- Duplicate filenames get a counter suffix: `Title (1).mp4`, `Title (2).mp4`
 - Supports 1000+ sites via [yt-dlp](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md)
 - Re-launching `reclip.bat` automatically clears any stale server process
