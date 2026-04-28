@@ -1,3 +1,5 @@
+> **Legal Disclaimer:** ReClip is intended for **personal, private use only**. You are solely responsible for ensuring your use complies with the terms of service of any platform you download from, as well as all applicable copyright laws in your jurisdiction. The authors of this software do not condone or encourage downloading copyrighted content without permission. Downloading DRM-protected content may be illegal under laws such as the DMCA. Use at your own risk.
+
 # ReClip
 
 Self-hosted video and audio downloader. Paste URLs from YouTube, TikTok, Instagram, Twitter/X, Twitch, LinkedIn, and 1000+ sites — download as MP4 or MP3 directly to your `downloads\` folder.
@@ -51,3 +53,7 @@ The cookie bar shows **Cookies active** in green when unlocked. Cookies can be r
 - Duplicate filenames get a counter suffix: `Title (1).mp4`, `Title (2).mp4`
 - Supports 1000+ sites via [yt-dlp](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md)
 - Re-launching `reclip.bat` automatically clears any stale server process
+
+## License
+
+MIT — see [LICENSE](LICENSE). This tool is provided as-is with no warranty. You are responsible for your own use.
