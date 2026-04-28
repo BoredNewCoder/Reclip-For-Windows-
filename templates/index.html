@@ -364,6 +364,52 @@
       line-height: 1.8;
     }
 
+    .cookie-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 10px;
+      padding: 10px 14px;
+      border: 1.5px solid var(--card-border);
+      border-radius: 10px;
+      background: var(--card);
+      font-size: 0.72rem;
+      color: var(--muted);
+      flex-wrap: wrap;
+    }
+    .cookie-bar.active {
+      border-color: rgba(45,138,78,0.3);
+      background: rgba(45,138,78,0.04);
+      color: var(--success);
+    }
+    .cookie-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+      flex-shrink: 0;
+    }
+    .cookie-label { flex: 1; }
+    .cookie-btn {
+      padding: 5px 12px;
+      border: 1.5px solid var(--card-border);
+      border-radius: 7px;
+      background: transparent;
+      color: var(--fg);
+      font-family: 'DM Mono', monospace;
+      font-size: 0.68rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .cookie-btn:hover { border-color: var(--fg); }
+    .cookie-btn.primary { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+    .cookie-btn.primary:hover { background: #2d2d2a; }
+    .cookie-btn.danger { color: var(--error); border-color: rgba(196,61,61,0.3); }
+    .cookie-btn.danger:hover { border-color: var(--error); }
+    #cookieUploadInput { display: none; }
+
     /* Mobile */
     @media (max-width: 500px) {
       .brand h1 { font-size: 3rem; }
@@ -396,6 +442,12 @@
         <button class="pill" data-format="audio" onclick="setFormat(this)">MP3</button>
       </div>
       <button class="fetch-btn" id="goBtn" onclick="go()">Fetch</button>
+    </div>
+
+    <div id="cookieBar" class="cookie-bar">
+      <div class="cookie-dot"></div>
+      <span class="cookie-label" id="cookieLabel">Loading...</span>
+      <input type="file" id="cookieUploadInput" accept=".txt" onchange="uploadCookieFile(this)">
     </div>
 
     <div id="cards" class="cards"></div>
@@ -438,12 +490,14 @@
       if (err.includes('Unsupported URL')) return 'This URL is not supported';
       if (err.includes('Video unavailable')) return 'Video is unavailable or private';
       if (err.includes('Private video')) return 'This video is private';
-      if (err.includes('HTTP Error 403')) return 'Access denied by the platform';
+      if (err.includes('HTTP Error 403')) return 'Access denied — try adding a cookies.txt file';
       if (err.includes('HTTP Error 404')) return 'Video not found';
       if (err.includes('copyright')) return 'Video blocked due to copyright';
       if (err.includes('geo')) return 'Video not available in your region';
       if (err.includes('timed out') || err.includes('Timed out')) return 'Request timed out — try again';
       if (err.includes('network') || err.includes('Network')) return 'Network error — check your connection';
+      if (err.includes('DRM') || err.includes('drm')) return 'DRM-protected — add cookies.txt for age-restricted content, or this is Widevine-encrypted (undownloadable)';
+      if (err.includes('Sign in') || err.includes('login')) return 'Login required — add a cookies.txt file from your browser';
       return err.length > 80 ? err.slice(0, 80) + '...' : err;
     }
 
@@ -485,6 +539,7 @@
               thumbnail: data.thumbnail || '',
               duration: data.duration,
               uploader: data.uploader || '',
+              source: data.source || '',
               formats: data.formats || [],
               selectedFormatId: data.formats?.[0]?.id || null,
             };
@@ -570,8 +625,7 @@
       } else if (c.status === 'downloading') {
         actionHtml = `<span class="card-status downloading"><span class="spin"></span> Downloading...</span>`;
       } else if (c.status === 'done') {
-        actionHtml = `<button class="card-dl-btn done" onclick="saveCard(${idx})">Save</button>
-          <span class="card-status done">${esc(c.filename || '')}</span>`;
+        actionHtml = `<span class="card-status done">Saved → downloads/${esc(c.filename || '')}</span>`;
       } else if (c.status === 'error') {
         actionHtml = `<button class="card-dl-btn" onclick="dlCard(${idx})">Retry</button>
           <span class="card-status error">${esc(friendlyError(c.error || 'Download failed'))}</span>`;
@@ -581,7 +635,7 @@
         <div class="card-thumb">${thumbHtml}</div>
         <div class="card-body">
           <div class="card-title">${esc(c.title || 'Untitled')}</div>
-          <div class="card-meta">${esc(c.uploader)}${c.duration ? ' · ' + fmtDur(c.duration) : ''}</div>
+          <div class="card-meta">${c.source ? esc(c.source) + ' · ' : ''}${esc(c.uploader)}${c.duration ? ' · ' + fmtDur(c.duration) : ''}</div>
           <div class="card-actions">${actionHtml}</div>
         </div>
       `;
@@ -618,6 +672,8 @@
             format: currentFormat,
             format_id: c.selectedFormatId,
             title: c.title || '',
+            uploader: c.uploader || '',
+            source: c.source || '',
           }),
         });
         const data = await res.json();
@@ -647,7 +703,6 @@
             c.status = 'done';
             c.filename = data.filename;
             renderCard(idx);
-            saveCard(idx);
           } else if (data.status === 'error') {
             clearInterval(iv);
             c.status = 'error';
@@ -671,6 +726,92 @@
       a.download = c.filename || '';
       a.click();
     }
+
+    async function loadCookieStatus() {
+      const bar = document.getElementById('cookieBar');
+      const label = document.getElementById('cookieLabel');
+      try {
+        const res = await fetch('/api/cookies/status');
+        const data = await res.json();
+        bar.innerHTML = '';
+
+        const dot = document.createElement('div');
+        dot.className = 'cookie-dot';
+        bar.appendChild(dot);
+
+        const lbl = document.createElement('span');
+        lbl.className = 'cookie-label';
+        bar.appendChild(lbl);
+
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.id = 'cookieUploadInput';
+        input.accept = '.txt';
+        input.style.display = 'none';
+        input.onchange = () => uploadCookieFile(input);
+        bar.appendChild(input);
+
+        if (data.active) {
+          bar.className = 'cookie-bar active';
+          lbl.textContent = 'Cookies active — age-restricted & subscriber content unlocked';
+          const clearBtn = document.createElement('button');
+          clearBtn.className = 'cookie-btn danger';
+          clearBtn.textContent = 'Remove';
+          clearBtn.onclick = clearCookies;
+          bar.appendChild(clearBtn);
+        } else {
+          bar.className = 'cookie-bar';
+          lbl.textContent = 'No cookies — some videos may be blocked';
+          if (data.firefox_available) {
+            const ffBtn = document.createElement('button');
+            ffBtn.className = 'cookie-btn primary';
+            ffBtn.textContent = 'Import from Firefox';
+            ffBtn.onclick = importFromFirefox;
+            bar.appendChild(ffBtn);
+          }
+          const uploadBtn = document.createElement('button');
+          uploadBtn.className = 'cookie-btn';
+          uploadBtn.textContent = 'Upload cookies.txt';
+          uploadBtn.onclick = () => document.getElementById('cookieUploadInput').click();
+          bar.appendChild(uploadBtn);
+        }
+      } catch {
+        document.getElementById('cookieLabel').textContent = '';
+      }
+    }
+
+    async function importFromFirefox() {
+      const bar = document.getElementById('cookieBar');
+      bar.querySelector('.cookie-label').textContent = 'Importing from Firefox...';
+      try {
+        const res = await fetch('/api/cookies/from-firefox', { method: 'POST' });
+        const data = await res.json();
+        if (data.error) {
+          alert('Import failed: ' + data.error);
+        }
+        loadCookieStatus();
+      } catch {
+        alert('Import failed — is the server running?');
+      }
+    }
+
+    async function uploadCookieFile(input) {
+      const file = input.files[0];
+      if (!file) return;
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch('/api/cookies/upload', { method: 'POST', body: form });
+      const data = await res.json();
+      if (data.error) alert('Upload failed: ' + data.error);
+      loadCookieStatus();
+    }
+
+    async function clearCookies() {
+      await fetch('/api/cookies/clear', { method: 'POST' });
+      loadCookieStatus();
+    }
+
+    loadCookieStatus();
 
     async function dlAll() {
       const btn = document.querySelector('.dl-all-btn');

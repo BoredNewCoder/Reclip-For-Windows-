@@ -1,14 +1,28 @@
 import os
+import sys
 import uuid
 import glob
 import json
+import shutil
+import sqlite3
+import tempfile
 import subprocess
 import threading
+from html import unescape
 from flask import Flask, request, jsonify, send_file, render_template
 
 app = Flask(__name__)
 DOWNLOAD_DIR = os.path.join(os.path.dirname(__file__), "downloads")
+COOKIES_FILE = os.path.join(os.path.dirname(__file__), "cookies.txt")
+YTDLP = [sys.executable, "-m", "yt_dlp"]
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+
+
+def base_cmd():
+    cmd = YTDLP + ["--no-playlist", "--js-runtimes", "node", "--remote-components", "ejs:github"]
+    if os.path.isfile(COOKIES_FILE):
+        cmd += ["--cookies", COOKIES_FILE]
+    return cmd
 
 jobs = {}
 
@@ -17,7 +31,7 @@ def run_download(job_id, url, format_choice, format_id):
     job = jobs[job_id]
     out_template = os.path.join(DOWNLOAD_DIR, f"{job_id}.%(ext)s")
 
-    cmd = ["yt-dlp", "--no-playlist", "-o", out_template]
+    cmd = base_cmd() + ["-o", out_template]
 
     if format_choice == "audio":
         cmd += ["-x", "--audio-format", "mp3"]
@@ -55,16 +69,36 @@ def run_download(job_id, url, format_choice, format_id):
                 except OSError:
                     pass
 
+        ext = os.path.splitext(chosen)[1]
+
+        def sanitize(s):
+            return "".join(ch for ch in s if ch not in r'\/:*?"<>|').strip()
+
+        title = sanitize(job.get("title", ""))
+        uploader = sanitize(job.get("uploader", ""))
+        source = sanitize(job.get("source", ""))
+
+        if title:
+            parts = [title[:100]]
+            if uploader:
+                parts.append(uploader[:50])
+            if source:
+                parts.append(source[:30])
+            final_name = " - ".join(parts) + ext
+        else:
+            final_name = os.path.basename(chosen)
+
+        final_path = os.path.join(DOWNLOAD_DIR, final_name)
+        if final_path != chosen:
+            try:
+                os.replace(chosen, final_path)
+                chosen = final_path
+            except OSError:
+                pass
+
         job["status"] = "done"
         job["file"] = chosen
-        ext = os.path.splitext(chosen)[1]
-        title = job.get("title", "").strip()
-        # Sanitize title for filename
-        if title:
-            safe_title = "".join(c for c in title if c not in r'\/:*?"<>|').strip()[:20].strip()
-            job["filename"] = f"{safe_title}{ext}" if safe_title else os.path.basename(chosen)
-        else:
-            job["filename"] = os.path.basename(chosen)
+        job["filename"] = os.path.basename(chosen)
     except subprocess.TimeoutExpired:
         job["status"] = "error"
         job["error"] = "Download timed out (5 min limit)"
@@ -85,7 +119,7 @@ def get_info():
     if not url:
         return jsonify({"error": "No URL provided"}), 400
 
-    cmd = ["yt-dlp", "--no-playlist", "-j", url]
+    cmd = base_cmd() + ["-j", url]
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
         if result.returncode != 0:
@@ -93,14 +127,24 @@ def get_info():
 
         info = json.loads(result.stdout)
 
-        # Build quality options — keep best format per resolution
+        # Build quality options — keep best landscape format per resolution
         best_by_height = {}
         for f in info.get("formats", []):
             height = f.get("height")
-            if height and f.get("vcodec", "none") != "none":
-                tbr = f.get("tbr") or 0
-                if height not in best_by_height or tbr > (best_by_height[height].get("tbr") or 0):
-                    best_by_height[height] = f
+            if not height:
+                continue
+            # Must be a video format — check vcodec or video_ext
+            has_video = (f.get("vcodec", "none") not in ("none", "")) or \
+                        (f.get("video_ext", "none") not in ("none", ""))
+            if not has_video:
+                continue
+            # Skip portrait orientations (aspect ratio < 1)
+            width = f.get("width") or 0
+            if width and width < height:
+                continue
+            tbr = f.get("tbr") or 0
+            if height not in best_by_height or tbr > (best_by_height[height].get("tbr") or 0):
+                best_by_height[height] = f
 
         formats = []
         for height, f in best_by_height.items():
@@ -111,11 +155,24 @@ def get_info():
             })
         formats.sort(key=lambda x: x["height"], reverse=True)
 
+        if info.get("_has_drm"):
+            return jsonify({"error": "This video is DRM-protected and cannot be downloaded."}), 400
+
+        all_formats = info.get("formats", [])
+        has_any = bool(formats) or any(
+            f.get("audio_ext", "none") not in (None, "none", "") or
+            f.get("video_ext", "none") not in (None, "none", "")
+            for f in all_formats
+        )
+        if not has_any:
+            return jsonify({"error": "No downloadable formats found."}), 400
+
         return jsonify({
-            "title": info.get("title", ""),
+            "title": unescape(info.get("title", "")),
             "thumbnail": info.get("thumbnail", ""),
             "duration": info.get("duration"),
             "uploader": info.get("uploader", ""),
+            "source": info.get("extractor_key", ""),
             "formats": formats,
         })
     except subprocess.TimeoutExpired:
@@ -131,12 +188,14 @@ def start_download():
     format_choice = data.get("format", "video")
     format_id = data.get("format_id")
     title = data.get("title", "")
+    uploader = data.get("uploader", "")
+    source = data.get("source", "")
 
     if not url:
         return jsonify({"error": "No URL provided"}), 400
 
     job_id = uuid.uuid4().hex[:10]
-    jobs[job_id] = {"status": "downloading", "url": url, "title": title}
+    jobs[job_id] = {"status": "downloading", "url": url, "title": title, "uploader": uploader, "source": source}
 
     thread = threading.Thread(target=run_download, args=(job_id, url, format_choice, format_id))
     thread.daemon = True
@@ -163,6 +222,77 @@ def download_file(job_id):
     if not job or job["status"] != "done":
         return jsonify({"error": "File not ready"}), 404
     return send_file(job["file"], as_attachment=True, download_name=job["filename"])
+
+
+def find_firefox_cookies():
+    roaming = os.environ.get("APPDATA", "")
+    profiles_dir = os.path.join(roaming, "Mozilla", "Firefox", "Profiles")
+    if not os.path.isdir(profiles_dir):
+        return None
+    candidates = glob.glob(os.path.join(profiles_dir, "*.default-release")) + \
+                 glob.glob(os.path.join(profiles_dir, "*.default"))
+    return os.path.join(candidates[0], "cookies.sqlite") if candidates else None
+
+
+def firefox_sqlite_to_netscape(sqlite_path):
+    with tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False) as tmp:
+        tmp_path = tmp.name
+    shutil.copy2(sqlite_path, tmp_path)
+    try:
+        con = sqlite3.connect(tmp_path)
+        cur = con.execute(
+            "SELECT host, path, isSecure, expiry, name, value FROM moz_cookies"
+        )
+        lines = ["# Netscape HTTP Cookie File"]
+        for host, path, secure, expiry, name, value in cur.fetchall():
+            include_sub = "TRUE" if host.startswith(".") else "FALSE"
+            secure_str = "TRUE" if secure else "FALSE"
+            lines.append(f"{host}\t{include_sub}\t{path}\t{secure_str}\t{expiry}\t{name}\t{value}")
+        con.close()
+        return "\n".join(lines)
+    finally:
+        os.unlink(tmp_path)
+
+
+@app.route("/api/cookies/status")
+def cookies_status():
+    active = os.path.isfile(COOKIES_FILE)
+    firefox_db = find_firefox_cookies()
+    return jsonify({
+        "active": active,
+        "firefox_available": firefox_db is not None,
+    })
+
+
+@app.route("/api/cookies/from-firefox", methods=["POST"])
+def import_from_firefox():
+    db = find_firefox_cookies()
+    if not db:
+        return jsonify({"error": "Firefox not found"}), 400
+    try:
+        content = firefox_sqlite_to_netscape(db)
+        with open(COOKIES_FILE, "w", encoding="utf-8") as f:
+            f.write(content)
+        count = content.count("\n")
+        return jsonify({"ok": True, "cookies": count})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/cookies/upload", methods=["POST"])
+def upload_cookies():
+    f = request.files.get("file")
+    if not f:
+        return jsonify({"error": "No file provided"}), 400
+    f.save(COOKIES_FILE)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/cookies/clear", methods=["POST"])
+def clear_cookies():
+    if os.path.isfile(COOKIES_FILE):
+        os.remove(COOKIES_FILE)
+    return jsonify({"ok": True})
 
 
 if __name__ == "__main__":

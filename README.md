@@ -1,6 +1,6 @@
 # ReClip
 
-Self-hosted video and audio downloader. Paste URLs from YouTube, TikTok, Instagram, Twitter/X, and 1000+ sites — download as MP4 or MP3.
+Self-hosted video and audio downloader. Paste URLs from YouTube, TikTok, Instagram, Twitter/X, Twitch, LinkedIn, and 1000+ sites — download as MP4 or MP3 directly to your `downloads\` folder.
 
 ## Requirements
 
@@ -31,10 +31,22 @@ First run installs Python dependencies automatically. Open **http://localhost:88
 2. Choose **MP4** (video) or **MP3** (audio)
 3. Click **Fetch**
 4. Select quality if prompted
-5. Click **Download**
+5. Click **Download** — file saves to `downloads\` folder
+
+## Unlocking Age-Restricted & Private Content
+
+Some videos require you to be logged in (age-restricted YouTube, subscriber-only Twitch VODs, etc). ReClip can import your browser session to unlock them:
+
+- Click **Import from Firefox** in the cookie bar (one click, no extensions needed)
+- Or click **Upload cookies.txt** and export cookies manually using the [Get cookies.txt LOCALLY](https://chrome.google.com/webstore/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc) extension
+
+The cookie bar shows **Cookies active** in green when unlocked. Cookies can be removed at any time.
+
+> **Note:** True Widevine DRM content (YouTube Premium movies, etc.) cannot be downloaded by any tool.
 
 ## Notes
 
 - Port can be changed: `set PORT=9000 && reclip.bat`
-- Downloads saved to `downloads\` folder inside the app directory
+- Downloads saved to `downloads\` folder with filename format: `Title - Channel - Source.mp4`
 - Supports 1000+ sites via [yt-dlp](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md)
+- Re-launching `reclip.bat` automatically clears any stale server process

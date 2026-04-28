@@ -33,16 +33,23 @@ if not exist "venv\" (
         pause
         exit /b 1
     )
-    call venv\Scripts\activate.bat
-    pip install -q -r requirements.txt
-) else (
-    call venv\Scripts\activate.bat
+    venv\Scripts\pip install -q -r requirements.txt
 )
 
 if not defined PORT set PORT=8899
+
+:: Kill any stale ReClip process on this port
+for /f "tokens=5" %%p in ('netstat -ano ^| findstr ":%PORT% " ^| findstr "LISTENING"') do (
+    taskkill /F /PID %%p >nul 2>&1
+)
 
 echo.
 echo   ReClip is running at http://localhost:%PORT%
 echo.
 
-python app.py
+venv\Scripts\python app.py
+if errorlevel 1 (
+    echo.
+    echo Error starting ReClip. See above for details.
+    pause
+)
