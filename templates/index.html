@@ -21,6 +21,18 @@
       --radius: 14px;
       --shimmer: linear-gradient(90deg, #ebe8e2 25%, #f0ede7 50%, #ebe8e2 75%);
     }
+    [data-theme="dark"] {
+      --bg: #181816;
+      --fg: #e8e5df;
+      --accent: #e85d2a;
+      --accent-hover: #f06b35;
+      --muted: #68675f;
+      --card: #222220;
+      --card-border: #333330;
+      --success: #3ba35e;
+      --error: #e05555;
+      --shimmer: linear-gradient(90deg, #2a2a28 25%, #303030 50%, #2a2a28 75%);
+    }
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -30,6 +42,7 @@
       color: var(--fg);
       min-height: 100vh;
       overflow-x: hidden;
+      transition: background 0.2s, color 0.2s;
     }
 
     body::after {
@@ -48,7 +61,7 @@
       padding: 60px 24px 80px;
     }
 
-    .brand { margin-bottom: 48px; }
+    .brand { margin-bottom: 48px; position: relative; }
     .brand h1 {
       font-family: 'Instrument Serif', serif;
       font-size: 4.2rem;
@@ -65,6 +78,23 @@
       letter-spacing: 0.04em;
       text-transform: uppercase;
     }
+
+    .theme-toggle {
+      position: absolute;
+      top: 0; right: 0;
+      width: 36px; height: 36px;
+      border: 1.5px solid var(--card-border);
+      border-radius: 10px;
+      background: var(--card);
+      color: var(--muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: border-color 0.2s, color 0.2s, background 0.2s;
+    }
+    .theme-toggle:hover { border-color: var(--fg); color: var(--fg); }
+    .theme-toggle svg { width: 15px; height: 15px; }
 
     textarea {
       width: 100%;
@@ -177,6 +207,14 @@
       object-fit: cover;
       display: block;
     }
+    .card-thumb::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(to bottom, transparent 30%, rgba(0,0,0,0.35) 100%);
+      pointer-events: none;
+      border-radius: 8px;
+    }
     /* No-thumbnail icon */
     .card-thumb .no-thumb {
       width: 100%;
@@ -272,6 +310,27 @@
     .card-status.done { color: var(--success); }
     .card-status.error { color: var(--error); }
 
+    /* Indeterminate download progress bar */
+    .dl-progress {
+      width: 100%;
+      height: 3px;
+      background: var(--card-border);
+      border-radius: 2px;
+      overflow: hidden;
+      margin-top: 6px;
+    }
+    .dl-progress-bar {
+      height: 100%;
+      width: 40%;
+      background: var(--accent);
+      border-radius: 2px;
+      animation: indeterminate 1.4s ease-in-out infinite;
+    }
+    @keyframes indeterminate {
+      0% { transform: translateX(-200%); }
+      100% { transform: translateX(350%); }
+    }
+
     .q-chip {
       padding: 4px 10px;
       border: 1.5px solid var(--card-border);
@@ -356,15 +415,43 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
+    /* Empty state */
+    .empty-state {
+      text-align: center;
+      padding: 56px 0 24px;
+      color: var(--muted);
+    }
+    .empty-state svg {
+      width: 44px; height: 44px;
+      opacity: 0.25;
+      margin: 0 auto 14px;
+      display: block;
+    }
+    .empty-state p {
+      font-size: 0.72rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    /* Footer platform chips */
     .footer {
       margin-top: 48px;
-      text-align: center;
-      font-size: 0.68rem;
-      color: var(--muted);
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
-      line-height: 1.8;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      justify-content: center;
     }
+    .platform-chip {
+      font-size: 0.62rem;
+      color: var(--muted);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding: 3px 9px;
+      border: 1px solid var(--card-border);
+      border-radius: 20px;
+      transition: border-color 0.2s, color 0.2s;
+    }
+    .platform-chip:hover { border-color: var(--muted); color: var(--fg); }
 
     .cookie-badge {
       position: relative;
@@ -450,6 +537,7 @@
 <body>
   <div class="page">
     <div class="brand">
+      <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle theme" aria-label="Toggle dark/light mode"></button>
       <h1>Re<em>Clip</em></h1>
       <p>Free media downloader</p>
     </div>
@@ -475,18 +563,69 @@
       <input type="file" id="cookieUploadInput" accept=".txt">
     </div>
 
-    <div id="cards" class="cards"></div>
+    <div id="cards" class="cards">
+      <div class="empty-state">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="2" width="20" height="20" rx="3"/>
+          <polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/>
+        </svg>
+        <p>Paste a URL above to get started</p>
+      </div>
+    </div>
 
     <div class="footer">
-      YouTube &middot; TikTok &middot; Instagram &middot; Twitter/X &middot; Reddit &middot; Facebook<br>
-      Vimeo &middot; Twitch &middot; Dailymotion &middot; SoundCloud &middot; Loom &middot; Streamable<br>
-      Pinterest &middot; Tumblr &middot; Threads &middot; LinkedIn &middot; 1000+ more
+      <span class="platform-chip">YouTube</span>
+      <span class="platform-chip">TikTok</span>
+      <span class="platform-chip">Instagram</span>
+      <span class="platform-chip">Twitter/X</span>
+      <span class="platform-chip">Reddit</span>
+      <span class="platform-chip">Facebook</span>
+      <span class="platform-chip">Vimeo</span>
+      <span class="platform-chip">Twitch</span>
+      <span class="platform-chip">Dailymotion</span>
+      <span class="platform-chip">SoundCloud</span>
+      <span class="platform-chip">Loom</span>
+      <span class="platform-chip">Streamable</span>
+      <span class="platform-chip">Pinterest</span>
+      <span class="platform-chip">Tumblr</span>
+      <span class="platform-chip">Threads</span>
+      <span class="platform-chip">LinkedIn</span>
+      <span class="platform-chip">1000+ more</span>
     </div>
   </div>
 
   <script>
     let currentFormat = 'video';
     let cardData = [];
+
+    // Theme toggle
+    const SUN_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>`;
+    const MOON_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`;
+
+    function updateThemeIcon() {
+      const btn = document.getElementById('themeToggle');
+      if (!btn) return;
+      btn.innerHTML = document.documentElement.dataset.theme === 'dark' ? SUN_SVG : MOON_SVG;
+    }
+
+    function toggleTheme() {
+      const isDark = document.documentElement.dataset.theme === 'dark';
+      const next = isDark ? 'light' : 'dark';
+      document.documentElement.dataset.theme = isDark ? '' : 'dark';
+      localStorage.setItem('theme', next);
+      updateThemeIcon();
+    }
+
+    // Init: restore saved theme or respect OS preference
+    (function initTheme() {
+      const saved = localStorage.getItem('theme');
+      if (saved === 'dark') {
+        document.documentElement.dataset.theme = 'dark';
+      } else if (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        document.documentElement.dataset.theme = 'dark';
+      }
+      updateThemeIcon();
+    })();
 
     function setFormat(btn) {
       document.querySelectorAll('.pill').forEach(b => b.classList.remove('active'));
@@ -598,7 +737,6 @@
         document.getElementById('cards').appendChild(el);
       }
 
-      // Loading skeleton
       if (c.status === 'loading') {
         el.className = 'card';
         el.innerHTML = `
@@ -611,7 +749,6 @@
         return;
       }
 
-      // Error state
       if (c.status === 'info-error') {
         el.className = 'card card-error';
         el.innerHTML = `
@@ -629,7 +766,6 @@
         return;
       }
 
-      // Ready / downloading / done / error states
       el.className = 'card';
       const isAudio = currentFormat === 'audio';
 
@@ -653,7 +789,10 @@
       if (c.status === 'ready') {
         actionHtml = `<button class="card-dl-btn" onclick="dlCard(${idx})">Download</button>${qualityChips}`;
       } else if (c.status === 'downloading') {
-        actionHtml = `<span class="card-status downloading"><span class="spin"></span> Downloading...</span>`;
+        actionHtml = `
+          <span class="card-status downloading"><span class="spin"></span> Downloading...</span>
+          <div class="dl-progress"><div class="dl-progress-bar"></div></div>
+        `;
       } else if (c.status === 'done') {
         actionHtml = `<span class="card-status done">Saved → downloads/${esc(c.filename || '')}</span>`;
       } else if (c.status === 'error') {
@@ -764,12 +903,6 @@
         const res = await fetch('/api/cookies/status');
         const data = await res.json();
 
-        const input = document.getElementById('cookieUploadInput');
-        input.onchange = () => uploadCookieFile(input);
-
-        // clear panel children except the input
-        while (panel.firstChild && panel.firstChild !== input) panel.removeChild(panel.firstChild);
-        // move input to end after we rebuild
         panel.innerHTML = '';
 
         const lbl = document.createElement('span');
@@ -815,14 +948,10 @@
     }
 
     async function importFromFirefox() {
-      const bar = document.getElementById('cookieBar');
-      bar.querySelector('.cookie-label').textContent = 'Importing from Firefox...';
       try {
         const res = await fetch('/api/cookies/from-firefox', { method: 'POST' });
         const data = await res.json();
-        if (data.error) {
-          alert('Import failed: ' + data.error);
-        }
+        if (data.error) alert('Import failed: ' + data.error);
         loadCookieStatus();
       } catch {
         alert('Import failed — is the server running?');
