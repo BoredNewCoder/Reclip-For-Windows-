@@ -78,6 +78,8 @@
       outline: none;
       resize: none;
       min-height: 56px;
+      max-height: 240px;
+      overflow-y: auto;
       transition: border-color 0.25s, box-shadow 0.25s;
       margin-bottom: 6px;
     }
@@ -364,31 +366,50 @@
       line-height: 1.8;
     }
 
-    .cookie-bar {
+    .cookie-badge {
+      position: relative;
+      width: 38px;
+      height: 38px;
+      border: 1.5px solid var(--card-border);
+      border-radius: 10px;
+      background: var(--card);
+      cursor: pointer;
       display: flex;
       align-items: center;
-      gap: 10px;
-      margin-top: 10px;
-      padding: 10px 14px;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: border-color 0.2s;
+    }
+    .cookie-badge:hover { border-color: var(--fg); }
+    .cookie-badge.active { border-color: rgba(45,138,78,0.4); }
+    .cookie-badge svg { width: 16px; height: 16px; color: var(--muted); }
+    .cookie-badge.active svg { color: var(--success); }
+    .cookie-badge-dot {
+      position: absolute;
+      top: 5px; right: 5px;
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--muted);
+    }
+    .cookie-badge.active .cookie-badge-dot { background: var(--success); }
+
+    .cookie-panel {
+      display: none;
+      margin-top: 8px;
+      padding: 12px 14px;
       border: 1.5px solid var(--card-border);
       border-radius: 10px;
       background: var(--card);
       font-size: 0.72rem;
       color: var(--muted);
-      flex-wrap: wrap;
     }
-    .cookie-bar.active {
+    .cookie-panel.open { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .cookie-panel.active {
       border-color: rgba(45,138,78,0.3);
       background: rgba(45,138,78,0.04);
       color: var(--success);
     }
-    .cookie-dot {
-      width: 7px; height: 7px;
-      border-radius: 50%;
-      background: currentColor;
-      flex-shrink: 0;
-    }
-    .cookie-label { flex: 1; }
+    .cookie-panel-label { flex: 1; }
     .cookie-btn {
       padding: 5px 12px;
       border: 1.5px solid var(--card-border);
@@ -442,12 +463,16 @@
         <button class="pill" data-format="audio" onclick="setFormat(this)">MP3</button>
       </div>
       <button class="fetch-btn" id="goBtn" onclick="go()">Fetch</button>
+      <button class="cookie-badge" id="cookieBadge" onclick="toggleCookiePanel()" title="Cookie settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><circle cx="8.5" cy="8.5" r="1.5" fill="currentColor" stroke="none"/><circle cx="15" cy="11" r="1" fill="currentColor" stroke="none"/><circle cx="11" cy="16" r="1.5" fill="currentColor" stroke="none"/>
+        </svg>
+        <span class="cookie-badge-dot"></span>
+      </button>
     </div>
 
-    <div id="cookieBar" class="cookie-bar">
-      <div class="cookie-dot"></div>
-      <span class="cookie-label" id="cookieLabel">Loading...</span>
-      <input type="file" id="cookieUploadInput" accept=".txt" onchange="uploadCookieFile(this)">
+    <div id="cookiePanel" class="cookie-panel">
+      <input type="file" id="cookieUploadInput" accept=".txt">
     </div>
 
     <div id="cards" class="cards"></div>
@@ -501,8 +526,13 @@
       return err.length > 80 ? err.slice(0, 80) + '...' : err;
     }
 
-    document.getElementById('urls').addEventListener('keydown', e => {
+    const urlsEl = document.getElementById('urls');
+    urlsEl.addEventListener('keydown', e => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); go(); }
+    });
+    urlsEl.addEventListener('input', function() {
+      this.style.height = 'auto';
+      this.style.height = this.scrollHeight + 'px';
     });
 
     async function go() {
@@ -718,57 +748,70 @@
       }, 1000);
     }
 
+    let cookiePanelOpen = false;
+
+    function toggleCookiePanel() {
+      cookiePanelOpen = !cookiePanelOpen;
+      const panel = document.getElementById('cookiePanel');
+      if (cookiePanelOpen) panel.classList.add('open');
+      else panel.classList.remove('open');
+    }
+
     async function loadCookieStatus() {
-      const bar = document.getElementById('cookieBar');
-      const label = document.getElementById('cookieLabel');
+      const badge = document.getElementById('cookieBadge');
+      const panel = document.getElementById('cookiePanel');
       try {
         const res = await fetch('/api/cookies/status');
         const data = await res.json();
-        bar.innerHTML = '';
 
-        const dot = document.createElement('div');
-        dot.className = 'cookie-dot';
-        bar.appendChild(dot);
+        const input = document.getElementById('cookieUploadInput');
+        input.onchange = () => uploadCookieFile(input);
+
+        // clear panel children except the input
+        while (panel.firstChild && panel.firstChild !== input) panel.removeChild(panel.firstChild);
+        // move input to end after we rebuild
+        panel.innerHTML = '';
 
         const lbl = document.createElement('span');
-        lbl.className = 'cookie-label';
-        bar.appendChild(lbl);
-
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.id = 'cookieUploadInput';
-        input.accept = '.txt';
-        input.style.display = 'none';
-        input.onchange = () => uploadCookieFile(input);
-        bar.appendChild(input);
+        lbl.className = 'cookie-panel-label';
 
         if (data.active) {
-          bar.className = 'cookie-bar active';
+          badge.className = 'cookie-badge active';
+          panel.className = cookiePanelOpen ? 'cookie-panel open active' : 'cookie-panel active';
           lbl.textContent = 'Cookies active — age-restricted & subscriber content unlocked';
+          panel.appendChild(lbl);
           const clearBtn = document.createElement('button');
           clearBtn.className = 'cookie-btn danger';
           clearBtn.textContent = 'Remove';
           clearBtn.onclick = clearCookies;
-          bar.appendChild(clearBtn);
+          panel.appendChild(clearBtn);
         } else {
-          bar.className = 'cookie-bar';
+          badge.className = 'cookie-badge';
+          panel.className = cookiePanelOpen ? 'cookie-panel open' : 'cookie-panel';
           lbl.textContent = 'No cookies — some videos may be blocked';
+          panel.appendChild(lbl);
           if (data.firefox_available) {
             const ffBtn = document.createElement('button');
             ffBtn.className = 'cookie-btn primary';
-            ffBtn.textContent = 'Import from Firefox';
+            ffBtn.textContent = 'Import Firefox';
             ffBtn.onclick = importFromFirefox;
-            bar.appendChild(ffBtn);
+            panel.appendChild(ffBtn);
           }
           const uploadBtn = document.createElement('button');
           uploadBtn.className = 'cookie-btn';
-          uploadBtn.textContent = 'Upload cookies.txt';
-          uploadBtn.onclick = () => document.getElementById('cookieUploadInput').click();
-          bar.appendChild(uploadBtn);
+          uploadBtn.textContent = 'Upload .txt';
+          uploadBtn.onclick = () => panel.querySelector('input[type=file]').click();
+          panel.appendChild(uploadBtn);
         }
-      } catch {
-        document.getElementById('cookieLabel').textContent = '';
-      }
+
+        const newInput = document.createElement('input');
+        newInput.type = 'file';
+        newInput.id = 'cookieUploadInput';
+        newInput.accept = '.txt';
+        newInput.style.display = 'none';
+        newInput.onchange = () => uploadCookieFile(newInput);
+        panel.appendChild(newInput);
+      } catch { /* silently ignore */ }
     }
 
     async function importFromFirefox() {
@@ -794,6 +837,7 @@
       const res = await fetch('/api/cookies/upload', { method: 'POST', body: form });
       const data = await res.json();
       if (data.error) alert('Upload failed: ' + data.error);
+      input.value = '';
       loadCookieStatus();
     }
 
