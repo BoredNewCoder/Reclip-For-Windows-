@@ -46,6 +46,10 @@ The cookie icon turns green when cookies are active. Click it again to remove co
 
 > **Note:** True Widevine DRM content (YouTube Premium movies, etc.) cannot be downloaded by any tool.
 
+## Interface
+
+- **Dark mode** — click the sun/moon icon in the top-right corner; preference persists across sessions and respects your OS setting automatically
+
 ## Notes
 
 - Port can be changed: `set PORT=9000 && reclip.bat`
