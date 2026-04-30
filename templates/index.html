@@ -789,9 +789,10 @@
       if (c.status === 'ready') {
         actionHtml = `<button class="card-dl-btn" onclick="dlCard(${idx})">Download</button>${qualityChips}`;
       } else if (c.status === 'downloading') {
+        const progress = c.progress || 0;
         actionHtml = `
-          <span class="card-status downloading"><span class="spin"></span> Downloading...</span>
-          <div class="dl-progress"><div class="dl-progress-bar"></div></div>
+          <span class="card-status downloading"><span class="spin"></span> Downloading... ${progress.toFixed(0)}%</span>
+          <progress value="${progress}" max="100" style="width:100%;height:4px;border:none;border-radius:2px;margin-top:6px;accent-color:var(--accent)"></progress>
         `;
       } else if (c.status === 'done') {
         actionHtml = `<span class="card-status done">Saved → downloads/${esc(c.filename || '')}</span>`;
@@ -871,11 +872,15 @@
             clearInterval(iv);
             c.status = 'done';
             c.filename = data.filename;
+            c.progress = 100;
             renderCard(idx);
           } else if (data.status === 'error') {
             clearInterval(iv);
             c.status = 'error';
             c.error = data.error;
+            renderCard(idx);
+          } else if (data.status === 'downloading') {
+            c.progress = data.progress || 0;
             renderCard(idx);
           }
         } catch {
@@ -981,11 +986,8 @@
       const btn = document.querySelector('.dl-all-btn');
       if (btn) { btn.disabled = true; btn.textContent = 'Downloading...'; }
 
-      for (let i = 0; i < cardData.length; i++) {
-        if (cardData[i].status === 'ready') {
-          await dlCard(i);
-        }
-      }
+      const promises = cardData.map((c, i) => cardData[i].status === 'ready' ? dlCard(i) : Promise.resolve());
+      await Promise.all(promises);
 
       if (btn) { btn.disabled = false; btn.textContent = 'Download All'; }
     }
