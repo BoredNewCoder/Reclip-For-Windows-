@@ -31,9 +31,14 @@ First run installs Python dependencies automatically. Open **http://localhost:88
 
 1. Paste one or more URLs into the input box
 2. Choose **MP4** (video) or **MP3** (audio)
-3. Click **Fetch**
-4. Select quality if prompted
-5. Click **Download** — file saves to `downloads\` folder
+3. Click **Fetch** — shows available formats with quality, codec, and file size
+4. Select quality (higher resolution = larger file)
+5. Click **Download** — real-time progress bar shows download % · file saves to `downloads\` folder
+
+### Batch Downloads
+
+- Paste multiple URLs, then click **Download All** — all videos download simultaneously
+- Progress shows live % for each download
 
 ## Unlocking Age-Restricted & Private Content
 
