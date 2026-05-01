@@ -1,61 +1,59 @@
 > **Legal Disclaimer:** ReClip is intended for **personal, private use only**. You are solely responsible for ensuring your use complies with the terms of service of any platform you download from, as well as all applicable copyright laws in your jurisdiction. The authors of this software do not condone or encourage downloading copyrighted content without permission. Downloading DRM-protected content may be illegal under laws such as the DMCA. Use at your own risk.
 
-# ReClip
+# ReClip for Windows
 
-Self-hosted video and audio downloader. Paste URLs from YouTube, TikTok, Instagram, Twitter/X, Twitch, LinkedIn, and 1000+ sites — download as MP4 or MP3 directly to your `downloads\` folder.
+**Self-hosted video and audio downloader** — Paste links from YouTube, TikTok, Instagram, X/Twitter, Twitch, and 1000+ other sites. Download as MP4 (video) or MP3 (audio) directly to your `downloads\` folder.
+
+Made for Windows users who want it to **just work**.
 
 ## Requirements
 
-- Windows 10 or 11 (64-bit)
-- Internet connection
+- Windows 10 or Windows 11 (64-bit)
+- Internet connection (for first-time setup)
 
-Everything else is installed automatically.
+**Everything else (Python, FFmpeg, dependencies) is installed automatically** by `reclip.bat`.
 
-## Setup (Super Easy)
+## Setup Instructions (Super Easy)
 
-1. Download the project and extract it.
-2. **Double-click** `reclip.bat`
+1. Download the latest release (or clone/extract the repository) into any folder.
+2. **Double-click** `reclip.bat`.
 
-   - First run: It will automatically install Python + FFmpeg (if missing).
-   - **Close** the window when it tells you to.
-   - **Double-click** `reclip.bat` again.
+### First Run (Setup Phase)
+- The launcher will automatically:
+  - Check/install **winget** (App Installer)
+  - Install **Python 3.13** for the current user (no administrator rights required)
+  - Install **FFmpeg**
+- When prompted, **close the window completely** and **double-click `reclip.bat` again**.
 
-3. Open your browser and go to: **http://localhost:8899**
+### Second Run (Normal Launch)
+- Creates virtual environment (if needed)
+- Updates all dependencies from `requirements.txt`
+- Starts the ReClip server
 
-That's it.
+Open your browser and go to: **http://localhost:8899**
 
 ## Usage
 
-1. Paste URL(s)
-2. Choose **Video (MP4)** or **Audio (MP3)**
-3. Click **Fetch**
-4. Select quality
-5. Click **Download**
+1. Paste one or more URLs into the box.
+2. Select **Video (MP4)** or **Audio (MP3)**.
+3. Click **Fetch** to see available quality options.
+4. Choose your preferred format/quality and click **Download**.
 
-Progress shows in real time. Files save to the `downloads` folder.
+Downloads are saved to the `downloads\` folder inside the ReClip directory.
 
-### Remove Sponsors
-- Check "**Remove Sponsors**" before downloading to automatically add SponsorBlock chapters (skips paid promotions).
+### Useful Features
+- **Remove Sponsors**: Enable to automatically skip sponsor segments using SponsorBlock.
+- **Batch Downloads**: Paste multiple URLs (one per line) and click **Download All**.
+- **Cookies for Restricted Content**: Click the cookie icon → **Import Firefox** (easiest) or upload `cookies.txt`.
 
-### Batch Downloads
+> **Note**: True DRM-protected content (most YouTube Premium movies, Netflix, etc.) cannot be downloaded.
 
-- Paste multiple URLs, then click **Download All** — all videos download simultaneously
-- Progress shows live % for each download
+### Dark Mode
+Click the sun/moon icon in the top right. Your preference is saved and respects your Windows theme.
 
-## Unlocking Age-Restricted & Private Content
-
-Some videos require you to be logged in (age-restricted YouTube, subscriber-only Twitch VODs, etc). ReClip can import your browser session to unlock them:
-
-- Click the cookie icon (🍪) next to the Fetch button, then **Import Firefox** (one click, no extensions needed)
-- Or click **Upload .txt** and export cookies manually using the [Get cookies.txt LOCALLY](https://chrome.google.com/webstore/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc) extension
-
-The cookie icon turns green when cookies are active. Click it again to remove cookies at any time.
-
-> **Note:** True Widevine DRM content (YouTube Premium movies, etc.) cannot be downloaded by any tool.
-
-## Interface
-
-- **Dark mode** — click the sun/moon icon in the top-right corner; preference persists across sessions and respects your OS setting automatically
+## Changing the Port
+Run from Command Prompt:
+set PORT=9000 && reclip.bat
 
 ## Notes
 
