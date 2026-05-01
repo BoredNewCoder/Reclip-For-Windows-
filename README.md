@@ -7,7 +7,7 @@ Self-hosted video and audio downloader. Paste URLs from YouTube, TikTok, Instagr
 ## Requirements
 
 - Windows 10 or 11 (64-bit)
-- Internet connection (for first-time setup)
+- Internet connection
 
 Everything else is installed automatically.
 
