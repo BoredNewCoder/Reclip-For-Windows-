@@ -37,7 +37,7 @@ def run_download(job_id, url, format_choice, format_id, sponsorblock=False):
 
     cmd = base_cmd() + ["-o", out_template]
 
-    # SponsorBlock - only remove paid sponsors (clean & safe)
+    # SponsorBlock - using "mark" because "remove" has timestamp bugs
     if sponsorblock:
         cmd += ["--sponsorblock-remove", "sponsor"]
 
@@ -231,7 +231,7 @@ def start_download():
     url = data.get("url", "").strip()
     format_choice = data.get("format", "video")
     format_id = data.get("format_id")
-    sponsorblock = data.get("sponsorblock", False)   # New
+    sponsorblock = data.get("sponsorblock", False)
 
     title = data.get("title", "")
     uploader = data.get("uploader", "")
@@ -277,7 +277,6 @@ def download_file(job_id):
     return send_file(job["file"], as_attachment=True, download_name=job["filename"])
 
 
-# ==================== Cookie Routes (unchanged) ====================
 def find_firefox_cookies():
     roaming = os.environ.get("APPDATA", "")
     profiles_dir = os.path.join(roaming, "Mozilla", "Firefox", "Profiles")
