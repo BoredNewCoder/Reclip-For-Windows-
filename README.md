@@ -34,6 +34,9 @@ That's it.
 
 Progress shows in real time. Files save to the `downloads` folder.
 
+### Remove Sponsors
+- Check "**Remove Sponsors**" before downloading to automatically add SponsorBlock chapters (skips paid promotions).
+
 ### Batch Downloads
 
 - Paste multiple URLs, then click **Download All** — all videos download simultaneously
