@@ -6,34 +6,33 @@ Self-hosted video and audio downloader. Paste URLs from YouTube, TikTok, Instagr
 
 ## Requirements
 
-- Windows 11
-- [Python 3.8+](https://www.python.org/)
-- [ffmpeg](https://ffmpeg.org/)
+- Windows 10 or 11 (64-bit)
+- Internet connection (for first-time setup)
 
-## Setup
+Everything else is installed automatically.
 
-**1. Install prerequisites** (one-time, open any terminal):
+## Setup (Super Easy)
 
-```
-winget install Python.Python.3
-winget install Gyan.FFmpeg
-```
+1. Download the project and extract it.
+2. **Double-click** `reclip.bat`
 
-**2. Open a new terminal**, then run:
+   - First run: It will automatically install Python + FFmpeg (if missing).
+   - **Close** the window when it tells you to.
+   - **Double-click** `reclip.bat` again.
 
-```
-reclip.bat
-```
+3. Open your browser and go to: **http://localhost:8899**
 
-First run installs Python dependencies automatically. Open **http://localhost:8899**.
+That's it.
 
 ## Usage
 
-1. Paste one or more URLs into the input box
-2. Choose **MP4** (video) or **MP3** (audio)
-3. Click **Fetch** — shows available formats with quality, codec, and file size
-4. Select quality (higher resolution = larger file)
-5. Click **Download** — real-time progress bar shows download % · file saves to `downloads\` folder
+1. Paste URL(s)
+2. Choose **Video (MP4)** or **Audio (MP3)**
+3. Click **Fetch**
+4. Select quality
+5. Click **Download**
+
+Progress shows in real time. Files save to the `downloads` folder.
 
 ### Batch Downloads
 
@@ -57,11 +56,22 @@ The cookie icon turns green when cookies are active. Click it again to remove co
 
 ## Notes
 
+- First run takes longer (installs tools + dependencies)
+- Run `reclip.bat` anytime — it auto-cleans old processes
+- To use a different port: Edit `reclip.bat` or set `PORT=9000` before running
 - Port can be changed: `set PORT=9000 && reclip.bat`
 - Downloads saved to `downloads\` folder with filename format: `Title - Channel - Source.mp4`
 - Duplicate filenames get a counter suffix: `Title (1).mp4`, `Title (2).mp4`
 - Supports 1000+ sites via [yt-dlp](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md)
 - Re-launching `reclip.bat` automatically clears any stale server process
+
+## Disclaimer
+
+For personal use only. You are responsible for complying with the terms of service and copyright laws of the sites you use.
+
+---
+
+Made for Windows users who just want it to work.
 
 ## License
 
