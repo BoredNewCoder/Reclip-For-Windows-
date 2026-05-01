@@ -59,7 +59,6 @@ The cookie icon turns green when cookies are active. Click it again to remove co
 - First run takes longer (installs tools + dependencies)
 - Run `reclip.bat` anytime — it auto-cleans old processes
 - To use a different port: Edit `reclip.bat` or set `PORT=9000` before running
-- Port can be changed: `set PORT=9000 && reclip.bat`
 - Downloads saved to `downloads\` folder with filename format: `Title - Channel - Source.mp4`
 - Duplicate filenames get a counter suffix: `Title (1).mp4`, `Title (2).mp4`
 - Supports 1000+ sites via [yt-dlp](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md)
