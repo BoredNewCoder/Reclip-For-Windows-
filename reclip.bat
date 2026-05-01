@@ -25,30 +25,42 @@ if not "%MISSING%"=="" (
 
     echo.
     echo ================================================
-    echo Install done.
-    echo CLOSE this window now,
+    echo Install finished.
+    echo CLOSE this window completely,
     echo then double-click reclip.bat again.
     echo ================================================
     pause
     exit /b 0
 )
 
-:: Create venv using py launcher (more reliable)
+:: Auto remove broken venv
+if exist "venv\" (
+    if not exist "venv\Scripts\python.exe" (
+        echo Removing broken venv...
+        rmdir /s /q venv
+    )
+)
+
+:: Create venv if needed
 if not exist "venv\" (
     echo Creating virtual environment...
     py -m venv venv
     if errorlevel 1 (
-        echo Failed to create venv. Try running again.
+        echo Failed to create venv.
+        echo Please close this window and try again.
         pause
         exit /b 1
     )
+    echo Installing dependencies...
     venv\Scripts\pip install -q -r requirements.txt
 )
 
 if not defined PORT set PORT=8899
 
-:: Kill old process
-for /f "tokens=5" %%p in ('netstat -ano ^| findstr ":%PORT% " ^| findstr "LISTENING"') do taskkill /F /PID %%p >nul 2>&1
+:: Kill stale process
+for /f "tokens=5" %%p in ('netstat -ano ^| findstr ":%PORT% " ^| findstr "LISTENING"') do (
+    taskkill /F /PID %%p >nul 2>&1
+)
 
 echo.
 echo ReClip is running at http://localhost:%PORT%
@@ -57,6 +69,6 @@ venv\Scripts\python app.py
 
 if errorlevel 1 (
     echo.
-    echo Error starting ReClip.
+    echo Error starting ReClip. See above.
     pause
 )
