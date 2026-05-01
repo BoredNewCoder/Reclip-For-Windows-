@@ -26,15 +26,20 @@ def base_cmd():
         cmd += ["--cookies", COOKIES_FILE]
     return cmd
 
+
 jobs = {}
 jobs_lock = threading.Lock()
 
 
-def run_download(job_id, url, format_choice, format_id):
+def run_download(job_id, url, format_choice, format_id, sponsorblock=False):
     job = jobs[job_id]
     out_template = os.path.join(DOWNLOAD_DIR, f"{job_id}.%(ext)s")
 
     cmd = base_cmd() + ["-o", out_template]
+
+    # SponsorBlock - only remove paid sponsors (clean & safe)
+    if sponsorblock:
+        cmd += ["--sponsorblock-remove", "sponsor"]
 
     if format_choice == "audio":
         cmd += ["-x", "--audio-format", "mp3"]
@@ -121,10 +126,6 @@ def run_download(job_id, url, format_choice, format_id):
             job["progress"] = 100
             job["file"] = chosen
             job["filename"] = os.path.basename(chosen)
-    except subprocess.TimeoutExpired:
-        with jobs_lock:
-            job["status"] = "error"
-            job["error"] = "Download timed out (5 min limit)"
     except Exception as e:
         with jobs_lock:
             job["status"] = "error"
@@ -163,14 +164,12 @@ def get_info():
             audio_ext = f.get("audio_ext") or "none"
             return audio_ext not in ("none", "")
 
-        # Build quality options — keep best landscape format per resolution
         all_formats = info.get("formats", [])
         best_by_height = {}
         for f in all_formats:
             height = f.get("height")
             if not height or not is_video_fmt(f):
                 continue
-            # Skip portrait orientations
             width = f.get("width") or 0
             if width and width < height:
                 continue
@@ -192,7 +191,6 @@ def get_info():
             filesize = f.get("filesize") or f.get("filesize_approx")
             size_str = format_filesize(filesize) if filesize else None
             vcodec = f.get("vcodec", "").split('.')[0] if f.get("vcodec") else ""
-            acodec = f.get("acodec", "").split('.')[0] if f.get("acodec") else ""
             codec_str = f"{vcodec}" if vcodec and vcodec != "none" else ""
 
             label = f"{height}p"
@@ -233,6 +231,8 @@ def start_download():
     url = data.get("url", "").strip()
     format_choice = data.get("format", "video")
     format_id = data.get("format_id")
+    sponsorblock = data.get("sponsorblock", False)   # New
+
     title = data.get("title", "")
     uploader = data.get("uploader", "")
     source = data.get("source", "")
@@ -240,7 +240,6 @@ def start_download():
     if not url:
         return jsonify({"error": "No URL provided"}), 400
 
-    # Prune jobs older than 1 hour
     cutoff = time.time() - 3600
     with jobs_lock:
         for jid in [k for k, v in jobs.items() if v.get("created", 0) < cutoff]:
@@ -249,7 +248,7 @@ def start_download():
         job_id = uuid.uuid4().hex[:10]
         jobs[job_id] = {"status": "downloading", "url": url, "title": title, "uploader": uploader, "source": source, "created": time.time(), "progress": 0}
 
-    thread = threading.Thread(target=run_download, args=(job_id, url, format_choice, format_id))
+    thread = threading.Thread(target=run_download, args=(job_id, url, format_choice, format_id, sponsorblock))
     thread.daemon = True
     thread.start()
 
@@ -278,6 +277,7 @@ def download_file(job_id):
     return send_file(job["file"], as_attachment=True, download_name=job["filename"])
 
 
+# ==================== Cookie Routes (unchanged) ====================
 def find_firefox_cookies():
     roaming = os.environ.get("APPDATA", "")
     profiles_dir = os.path.join(roaming, "Mozilla", "Firefox", "Profiles")
@@ -295,9 +295,7 @@ def firefox_sqlite_to_netscape(sqlite_path):
     try:
         con = sqlite3.connect(tmp_path)
         try:
-            cur = con.execute(
-                "SELECT host, path, isSecure, expiry, name, value FROM moz_cookies"
-            )
+            cur = con.execute("SELECT host, path, isSecure, expiry, name, value FROM moz_cookies")
             lines = ["# Netscape HTTP Cookie File"]
             for host, path, secure, expiry, name, value in cur.fetchall():
                 include_sub = "TRUE" if host.startswith(".") else "FALSE"
