@@ -1,8 +1,0 @@
-venv/
-downloads/
-cookies.txt
-__pycache__/
-*.pyc
-.env
-.claude/
-.ijfw/
