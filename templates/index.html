@@ -936,6 +936,15 @@
       else panel.classList.remove('open');
     }
 
+    let cookiePanelOpen = false;
+
+    function toggleCookiePanel() {
+      cookiePanelOpen = !cookiePanelOpen;
+      const panel = document.getElementById('cookiePanel');
+      if (cookiePanelOpen) panel.classList.add('open');
+      else panel.classList.remove('open');
+    }
+
     async function loadCookieStatus() {
       const badge = document.getElementById('cookieBadge');
       const panel = document.getElementById('cookiePanel');
