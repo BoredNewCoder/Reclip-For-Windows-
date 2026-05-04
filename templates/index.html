@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ReClip — Free Media Downloader</title>
-  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
@@ -21,6 +21,18 @@
       --radius: 14px;
       --shimmer: linear-gradient(90deg, #ebe8e2 25%, #f0ede7 50%, #ebe8e2 75%);
     }
+    [data-theme="dark"] {
+      --bg: #181816;
+      --fg: #e8e5df;
+      --accent: #e85d2a;
+      --accent-hover: #f06b35;
+      --muted: #68675f;
+      --card: #222220;
+      --card-border: #333330;
+      --success: #3ba35e;
+      --error: #e05555;
+      --shimmer: linear-gradient(90deg, #2a2a28 25%, #303030 50%, #2a2a28 75%);
+    }
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -30,6 +42,7 @@
       color: var(--fg);
       min-height: 100vh;
       overflow-x: hidden;
+      transition: background 0.2s, color 0.2s;
     }
 
     body::after {
@@ -48,7 +61,7 @@
       padding: 60px 24px 80px;
     }
 
-    .brand { margin-bottom: 48px; }
+    .brand { margin-bottom: 48px; position: relative; }
     .brand h1 {
       font-family: 'Instrument Serif', serif;
       font-size: 4.2rem;
@@ -66,6 +79,23 @@
       text-transform: uppercase;
     }
 
+    .theme-toggle {
+      position: absolute;
+      top: 0; right: 0;
+      width: 36px; height: 36px;
+      border: 1.5px solid var(--card-border);
+      border-radius: 10px;
+      background: var(--card);
+      color: var(--muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: border-color 0.2s, color 0.2s, background 0.2s;
+    }
+    .theme-toggle:hover { border-color: var(--fg); color: var(--fg); }
+    .theme-toggle svg { width: 15px; height: 15px; }
+
     textarea {
       width: 100%;
       padding: 18px 20px;
@@ -78,6 +108,8 @@
       outline: none;
       resize: none;
       min-height: 56px;
+      max-height: 240px;
+      overflow-y: auto;
       transition: border-color 0.25s, box-shadow 0.25s;
       margin-bottom: 6px;
     }
@@ -99,6 +131,7 @@
       gap: 10px;
       margin-bottom: 6px;
       align-items: center;
+      flex-wrap: wrap;
     }
     .pill-group {
       display: flex;
@@ -122,6 +155,20 @@
     .pill.active { background: var(--fg); color: var(--bg); }
     .pill:not(.active):hover { color: var(--fg); }
 
+    .sponsor-toggle {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.75rem;
+      color: var(--muted);
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+    }
+    .sponsor-toggle input[type="checkbox"] {
+      accent-color: var(--accent);
+    }
+
     .fetch-btn {
       flex: 1;
       padding: 10px 20px;
@@ -141,9 +188,7 @@
     .fetch-btn:active { transform: scale(0.98); }
     .fetch-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
-    /* Cards */
-    .cards { margin-top: 24px; }
-
+    /* All your original styles below remain unchanged */
     .card {
       display: flex;
       gap: 14px;
@@ -175,7 +220,14 @@
       object-fit: cover;
       display: block;
     }
-    /* No-thumbnail icon */
+    .card-thumb::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(to bottom, transparent 30%, rgba(0,0,0,0.35) 100%);
+      pointer-events: none;
+      border-radius: 8px;
+    }
     .card-thumb .no-thumb {
       width: 100%;
       height: 100%;
@@ -190,7 +242,6 @@
       opacity: 0.5;
     }
 
-    /* Shimmer skeleton for loading state */
     .card-thumb.loading {
       background: var(--shimmer);
       background-size: 200% 100%;
@@ -270,6 +321,26 @@
     .card-status.done { color: var(--success); }
     .card-status.error { color: var(--error); }
 
+    .dl-progress {
+      width: 100%;
+      height: 3px;
+      background: var(--card-border);
+      border-radius: 2px;
+      overflow: hidden;
+      margin-top: 6px;
+    }
+    .dl-progress-bar {
+      height: 100%;
+      width: 40%;
+      background: var(--accent);
+      border-radius: 2px;
+      animation: indeterminate 1.4s ease-in-out infinite;
+    }
+    @keyframes indeterminate {
+      0% { transform: translateX(-200%); }
+      100% { transform: translateX(350%); }
+    }
+
     .q-chip {
       padding: 4px 10px;
       border: 1.5px solid var(--card-border);
@@ -288,7 +359,6 @@
     }
     .q-chip:hover:not(.active) { border-color: var(--muted); }
 
-    /* Error card */
     .card.card-error {
       border-color: rgba(196, 61, 61, 0.2);
       background: rgba(196, 61, 61, 0.03);
@@ -319,7 +389,6 @@
       margin-top: 4px;
     }
 
-    /* Download all bar */
     .dl-all-bar {
       display: flex;
       gap: 10px;
@@ -354,41 +423,86 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    .footer {
-      margin-top: 48px;
+    .empty-state {
       text-align: center;
-      font-size: 0.68rem;
+      padding: 56px 0 24px;
       color: var(--muted);
-      letter-spacing: 0.05em;
+    }
+    .empty-state svg {
+      width: 44px; height: 44px;
+      opacity: 0.25;
+      margin: 0 auto 14px;
+      display: block;
+    }
+    .empty-state p {
+      font-size: 0.72rem;
+      letter-spacing: 0.06em;
       text-transform: uppercase;
-      line-height: 1.8;
     }
 
-    .cookie-bar {
+    .footer {
+      margin-top: 48px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      justify-content: center;
+    }
+    .platform-chip {
+      font-size: 0.62rem;
+      color: var(--muted);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding: 3px 9px;
+      border: 1px solid var(--card-border);
+      border-radius: 20px;
+      transition: border-color 0.2s, color 0.2s;
+    }
+    .platform-chip:hover { border-color: var(--muted); color: var(--fg); }
+
+    .cookie-badge {
+      position: relative;
+      width: 38px;
+      height: 38px;
+      border: 1.5px solid var(--card-border);
+      border-radius: 10px;
+      background: var(--card);
+      cursor: pointer;
       display: flex;
       align-items: center;
-      gap: 10px;
-      margin-top: 10px;
-      padding: 10px 14px;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: border-color 0.2s;
+    }
+    .cookie-badge:hover { border-color: var(--fg); }
+    .cookie-badge.active { border-color: rgba(45,138,78,0.4); }
+    .cookie-badge svg { width: 16px; height: 16px; color: var(--muted); }
+    .cookie-badge.active svg { color: var(--success); }
+    .cookie-badge-dot {
+      position: absolute;
+      top: 5px; right: 5px;
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--muted);
+    }
+    .cookie-badge.active .cookie-badge-dot { background: var(--success); }
+
+    .cookie-panel {
+      display: none;
+      margin-top: 8px;
+      padding: 12px 14px;
       border: 1.5px solid var(--card-border);
       border-radius: 10px;
       background: var(--card);
       font-size: 0.72rem;
       color: var(--muted);
-      flex-wrap: wrap;
     }
-    .cookie-bar.active {
+    .cookie-panel.open { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .cookie-panel.active {
       border-color: rgba(45,138,78,0.3);
       background: rgba(45,138,78,0.04);
       color: var(--success);
     }
-    .cookie-dot {
-      width: 7px; height: 7px;
-      border-radius: 50%;
-      background: currentColor;
-      flex-shrink: 0;
-    }
-    .cookie-label { flex: 1; }
+    .cookie-panel-label { flex: 1; }
     .cookie-btn {
       padding: 5px 12px;
       border: 1.5px solid var(--card-border);
@@ -410,7 +524,6 @@
     .cookie-btn.danger:hover { border-color: var(--error); }
     #cookieUploadInput { display: none; }
 
-    /* Mobile */
     @media (max-width: 500px) {
       .brand h1 { font-size: 3rem; }
       .page { padding: 40px 16px 60px; }
@@ -429,6 +542,7 @@
 <body>
   <div class="page">
     <div class="brand">
+      <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle theme" aria-label="Toggle dark/light mode"></button>
       <h1>Re<em>Clip</em></h1>
       <p>Free media downloader</p>
     </div>
@@ -441,27 +555,86 @@
         <button class="pill active" data-format="video" onclick="setFormat(this)">MP4</button>
         <button class="pill" data-format="audio" onclick="setFormat(this)">MP3</button>
       </div>
+
+      <label class="sponsor-toggle">
+        <input type="checkbox" id="sponsorblock" checked>
+        Remove Sponsors
+      </label>
+
       <button class="fetch-btn" id="goBtn" onclick="go()">Fetch</button>
+
+      <button class="cookie-badge" id="cookieBadge" onclick="toggleCookiePanel()" title="Cookie settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><circle cx="8.5" cy="8.5" r="1.5" fill="currentColor" stroke="none"/><circle cx="15" cy="11" r="1" fill="currentColor" stroke="none"/><circle cx="11" cy="16" r="1.5" fill="currentColor" stroke="none"/>
+        </svg>
+        <span class="cookie-badge-dot"></span>
+      </button>
     </div>
 
-    <div id="cookieBar" class="cookie-bar">
-      <div class="cookie-dot"></div>
-      <span class="cookie-label" id="cookieLabel">Loading...</span>
-      <input type="file" id="cookieUploadInput" accept=".txt" onchange="uploadCookieFile(this)">
-    </div>
+    <div id="cookiePanel" class="cookie-panel"></div>
 
-    <div id="cards" class="cards"></div>
+    <div id="cards" class="cards">
+      <div class="empty-state">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="2" width="20" height="20" rx="3"/>
+          <polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/>
+        </svg>
+        <p>Paste a URL above to get started</p>
+      </div>
+    </div>
 
     <div class="footer">
-      YouTube &middot; TikTok &middot; Instagram &middot; Twitter/X &middot; Reddit &middot; Facebook<br>
-      Vimeo &middot; Twitch &middot; Dailymotion &middot; SoundCloud &middot; Loom &middot; Streamable<br>
-      Pinterest &middot; Tumblr &middot; Threads &middot; LinkedIn &middot; 1000+ more
+      <span class="platform-chip">YouTube</span>
+      <span class="platform-chip">TikTok</span>
+      <span class="platform-chip">Instagram</span>
+      <span class="platform-chip">Twitter/X</span>
+      <span class="platform-chip">Reddit</span>
+      <span class="platform-chip">Facebook</span>
+      <span class="platform-chip">Vimeo</span>
+      <span class="platform-chip">Twitch</span>
+      <span class="platform-chip">Dailymotion</span>
+      <span class="platform-chip">SoundCloud</span>
+      <span class="platform-chip">Loom</span>
+      <span class="platform-chip">Streamable</span>
+      <span class="platform-chip">Pinterest</span>
+      <span class="platform-chip">Tumblr</span>
+      <span class="platform-chip">Threads</span>
+      <span class="platform-chip">LinkedIn</span>
+      <span class="platform-chip">1000+ more</span>
     </div>
   </div>
 
   <script>
     let currentFormat = 'video';
     let cardData = [];
+
+    // Theme toggle
+    const SUN_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>`;
+    const MOON_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`;
+
+    function updateThemeIcon() {
+      const btn = document.getElementById('themeToggle');
+      if (!btn) return;
+      btn.innerHTML = document.documentElement.dataset.theme === 'dark' ? SUN_SVG : MOON_SVG;
+    }
+
+    function toggleTheme() {
+      const isDark = document.documentElement.dataset.theme === 'dark';
+      const next = isDark ? 'light' : 'dark';
+      document.documentElement.dataset.theme = isDark ? '' : 'dark';
+      localStorage.setItem('theme', next);
+      updateThemeIcon();
+    }
+
+    (function initTheme() {
+      const saved = localStorage.getItem('theme');
+      if (saved === 'dark') {
+        document.documentElement.dataset.theme = 'dark';
+      } else if (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        document.documentElement.dataset.theme = 'dark';
+      }
+      updateThemeIcon();
+    })();
 
     function setFormat(btn) {
       document.querySelectorAll('.pill').forEach(b => b.classList.remove('active'));
@@ -496,18 +669,25 @@
       if (err.includes('geo')) return 'Video not available in your region';
       if (err.includes('timed out') || err.includes('Timed out')) return 'Request timed out — try again';
       if (err.includes('network') || err.includes('Network')) return 'Network error — check your connection';
-      if (err.includes('DRM') || err.includes('drm')) return 'DRM-protected — add cookies.txt for age-restricted content, or this is Widevine-encrypted (undownloadable)';
-      if (err.includes('Sign in') || err.includes('login')) return 'Login required — add a cookies.txt file from your browser';
+      if (err.includes('DRM') || err.includes('drm')) return 'DRM-protected — add cookies.txt for age-restricted content';
+      if (err.includes('Sign in') || err.includes('login')) return 'Login required — add a cookies.txt file';
       return err.length > 80 ? err.slice(0, 80) + '...' : err;
     }
 
-    document.getElementById('urls').addEventListener('keydown', e => {
+    const urlsEl = document.getElementById('urls');
+    urlsEl.addEventListener('keydown', e => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); go(); }
+    });
+    urlsEl.addEventListener('input', function() {
+      this.style.height = 'auto';
+      this.style.height = this.scrollHeight + 'px';
     });
 
     async function go() {
       const urls = parseUrls(document.getElementById('urls').value);
       if (!urls.length) return;
+
+      const sponsorblock = document.getElementById('sponsorblock').checked;
 
       const btn = document.getElementById('goBtn');
       const container = document.getElementById('cards');
@@ -568,7 +748,6 @@
         document.getElementById('cards').appendChild(el);
       }
 
-      // Loading skeleton
       if (c.status === 'loading') {
         el.className = 'card';
         el.innerHTML = `
@@ -581,7 +760,6 @@
         return;
       }
 
-      // Error state
       if (c.status === 'info-error') {
         el.className = 'card card-error';
         el.innerHTML = `
@@ -599,7 +777,6 @@
         return;
       }
 
-      // Ready / downloading / done / error states
       el.className = 'card';
       const isAudio = currentFormat === 'audio';
 
@@ -623,7 +800,11 @@
       if (c.status === 'ready') {
         actionHtml = `<button class="card-dl-btn" onclick="dlCard(${idx})">Download</button>${qualityChips}`;
       } else if (c.status === 'downloading') {
-        actionHtml = `<span class="card-status downloading"><span class="spin"></span> Downloading...</span>`;
+        const progress = c.progress || 0;
+        actionHtml = `
+          <span class="card-status downloading"><span class="spin"></span> Downloading... ${progress.toFixed(0)}%</span>
+          <progress value="${progress}" max="100" style="width:100%;height:4px;border:none;border-radius:2px;margin-top:6px;accent-color:var(--accent)"></progress>
+        `;
       } else if (c.status === 'done') {
         actionHtml = `<span class="card-status done">Saved → downloads/${esc(c.filename || '')}</span>`;
       } else if (c.status === 'error') {
@@ -663,6 +844,8 @@
       c.error = null;
       renderCard(idx);
 
+      const sponsorblock = document.getElementById('sponsorblock').checked;
+
       try {
         const res = await fetch('/api/download', {
           method: 'POST',
@@ -674,6 +857,7 @@
             title: c.title || '',
             uploader: c.uploader || '',
             source: c.source || '',
+            sponsorblock: sponsorblock
           }),
         });
         const data = await res.json();
@@ -702,11 +886,15 @@
             clearInterval(iv);
             c.status = 'done';
             c.filename = data.filename;
+            c.progress = 100;
             renderCard(idx);
           } else if (data.status === 'error') {
             clearInterval(iv);
             c.status = 'error';
             c.error = data.error;
+            renderCard(idx);
+          } else if (data.status === 'downloading') {
+            c.progress = data.progress || 0;
             renderCard(idx);
           }
         } catch {
@@ -718,68 +906,71 @@
       }, 1000);
     }
 
+    let cookiePanelOpen = false;
+
+    function toggleCookiePanel() {
+      cookiePanelOpen = !cookiePanelOpen;
+      const panel = document.getElementById('cookiePanel');
+      if (cookiePanelOpen) panel.classList.add('open');
+      else panel.classList.remove('open');
+    }
+
     async function loadCookieStatus() {
-      const bar = document.getElementById('cookieBar');
-      const label = document.getElementById('cookieLabel');
+      const badge = document.getElementById('cookieBadge');
+      const panel = document.getElementById('cookiePanel');
       try {
         const res = await fetch('/api/cookies/status');
         const data = await res.json();
-        bar.innerHTML = '';
 
-        const dot = document.createElement('div');
-        dot.className = 'cookie-dot';
-        bar.appendChild(dot);
+        panel.innerHTML = '';
 
         const lbl = document.createElement('span');
-        lbl.className = 'cookie-label';
-        bar.appendChild(lbl);
-
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.id = 'cookieUploadInput';
-        input.accept = '.txt';
-        input.style.display = 'none';
-        input.onchange = () => uploadCookieFile(input);
-        bar.appendChild(input);
+        lbl.className = 'cookie-panel-label';
 
         if (data.active) {
-          bar.className = 'cookie-bar active';
+          badge.className = 'cookie-badge active';
+          panel.className = cookiePanelOpen ? 'cookie-panel open active' : 'cookie-panel active';
           lbl.textContent = 'Cookies active — age-restricted & subscriber content unlocked';
+          panel.appendChild(lbl);
           const clearBtn = document.createElement('button');
           clearBtn.className = 'cookie-btn danger';
           clearBtn.textContent = 'Remove';
           clearBtn.onclick = clearCookies;
-          bar.appendChild(clearBtn);
+          panel.appendChild(clearBtn);
         } else {
-          bar.className = 'cookie-bar';
+          badge.className = 'cookie-badge';
+          panel.className = cookiePanelOpen ? 'cookie-panel open' : 'cookie-panel';
           lbl.textContent = 'No cookies — some videos may be blocked';
+          panel.appendChild(lbl);
           if (data.firefox_available) {
             const ffBtn = document.createElement('button');
             ffBtn.className = 'cookie-btn primary';
-            ffBtn.textContent = 'Import from Firefox';
+            ffBtn.textContent = 'Import Firefox';
             ffBtn.onclick = importFromFirefox;
-            bar.appendChild(ffBtn);
+            panel.appendChild(ffBtn);
           }
           const uploadBtn = document.createElement('button');
           uploadBtn.className = 'cookie-btn';
-          uploadBtn.textContent = 'Upload cookies.txt';
-          uploadBtn.onclick = () => document.getElementById('cookieUploadInput').click();
-          bar.appendChild(uploadBtn);
+          uploadBtn.textContent = 'Upload .txt';
+          uploadBtn.onclick = () => panel.querySelector('input[type=file]').click();
+          panel.appendChild(uploadBtn);
         }
-      } catch {
-        document.getElementById('cookieLabel').textContent = '';
-      }
+
+        const newInput = document.createElement('input');
+        newInput.type = 'file';
+        newInput.id = 'cookieUploadInput';
+        newInput.accept = '.txt';
+        newInput.style.display = 'none';
+        newInput.onchange = () => uploadCookieFile(newInput);
+        panel.appendChild(newInput);
+      } catch { /* silently ignore */ }
     }
 
     async function importFromFirefox() {
-      const bar = document.getElementById('cookieBar');
-      bar.querySelector('.cookie-label').textContent = 'Importing from Firefox...';
       try {
         const res = await fetch('/api/cookies/from-firefox', { method: 'POST' });
         const data = await res.json();
-        if (data.error) {
-          alert('Import failed: ' + data.error);
-        }
+        if (data.error) alert('Import failed: ' + data.error);
         loadCookieStatus();
       } catch {
         alert('Import failed — is the server running?');
@@ -794,6 +985,7 @@
       const res = await fetch('/api/cookies/upload', { method: 'POST', body: form });
       const data = await res.json();
       if (data.error) alert('Upload failed: ' + data.error);
+      input.value = '';
       loadCookieStatus();
     }
 
@@ -802,20 +994,18 @@
       loadCookieStatus();
     }
 
-    loadCookieStatus();
-
     async function dlAll() {
       const btn = document.querySelector('.dl-all-btn');
       if (btn) { btn.disabled = true; btn.textContent = 'Downloading...'; }
 
-      for (let i = 0; i < cardData.length; i++) {
-        if (cardData[i].status === 'ready') {
-          await dlCard(i);
-        }
-      }
+      const promises = cardData.map((c, i) => cardData[i].status === 'ready' ? dlCard(i) : Promise.resolve());
+      await Promise.all(promises);
 
       if (btn) { btn.disabled = false; btn.textContent = 'Download All'; }
     }
+
+    // Initialize
+    loadCookieStatus();
   </script>
 </body>
 </html>

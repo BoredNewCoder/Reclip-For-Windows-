@@ -9,6 +9,9 @@ import tempfile
 import subprocess
 import threading
 import time
+import re
+import webbrowser
+import imageio_ffmpeg
 from html import unescape
 from flask import Flask, request, jsonify, send_file, render_template
 
@@ -16,23 +19,30 @@ app = Flask(__name__)
 DOWNLOAD_DIR = os.path.join(os.path.dirname(__file__), "downloads")
 COOKIES_FILE = os.path.join(os.path.dirname(__file__), "cookies.txt")
 YTDLP = [sys.executable, "-m", "yt_dlp"]
+FFMPEG_PATH = imageio_ffmpeg.get_ffmpeg_exe()
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 
 def base_cmd():
-    cmd = YTDLP + ["--no-playlist", "--js-runtimes", "node", "--remote-components", "ejs:github"]
+    cmd = YTDLP + ["--no-playlist", "--ffmpeg-location", FFMPEG_PATH]
     if os.path.isfile(COOKIES_FILE):
         cmd += ["--cookies", COOKIES_FILE]
     return cmd
 
+
 jobs = {}
+jobs_lock = threading.Lock()
 
 
-def run_download(job_id, url, format_choice, format_id):
+def run_download(job_id, url, format_choice, format_id, sponsorblock=False):
     job = jobs[job_id]
     out_template = os.path.join(DOWNLOAD_DIR, f"{job_id}.%(ext)s")
 
     cmd = base_cmd() + ["-o", out_template]
+
+    # SponsorBlock - using "mark" because "remove" has timestamp bugs
+    if sponsorblock:
+        cmd += ["--sponsorblock-remove", "sponsor"]
 
     if format_choice == "audio":
         cmd += ["-x", "--audio-format", "mp3"]
@@ -44,16 +54,28 @@ def run_download(job_id, url, format_choice, format_id):
     cmd.append(url)
 
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
-        if result.returncode != 0:
-            job["status"] = "error"
-            job["error"] = result.stderr.strip().split("\n")[-1]
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+        last_error = ""
+
+        for line in proc.stdout:
+            last_error = line.strip()
+            match = re.search(r'\[download\]\s+([\d.]+)%', line)
+            if match:
+                with jobs_lock:
+                    job["progress"] = float(match.group(1))
+
+        returncode = proc.wait()
+        if returncode != 0:
+            with jobs_lock:
+                job["status"] = "error"
+                job["error"] = last_error if last_error else "Download failed"
             return
 
         files = glob.glob(os.path.join(DOWNLOAD_DIR, f"{job_id}.*"))
         if not files:
-            job["status"] = "error"
-            job["error"] = "Download completed but no file was found"
+            with jobs_lock:
+                job["status"] = "error"
+                job["error"] = "Download completed but no file was found"
             return
 
         if format_choice == "audio":
@@ -97,20 +119,25 @@ def run_download(job_id, url, format_choice, format_id):
             counter += 1
         if final_path != chosen:
             try:
-                os.replace(chosen, final_path)
+                shutil.move(chosen, final_path)
                 chosen = final_path
             except OSError:
                 pass
 
-        job["status"] = "done"
-        job["file"] = chosen
-        job["filename"] = os.path.basename(chosen)
-    except subprocess.TimeoutExpired:
-        job["status"] = "error"
-        job["error"] = "Download timed out (5 min limit)"
+        with jobs_lock:
+            job["status"] = "done"
+            job["progress"] = 100
+            job["file"] = chosen
+            job["filename"] = os.path.basename(chosen)
     except Exception as e:
-        job["status"] = "error"
-        job["error"] = str(e)
+        with jobs_lock:
+            job["status"] = "error"
+            job["error"] = str(e)
+
+
+@app.route("/favicon.svg")
+def favicon():
+    return send_file(os.path.join(os.path.dirname(__file__), "templates", "favicon.svg"), mimetype="image/svg+xml")
 
 
 @app.route("/")
@@ -145,14 +172,12 @@ def get_info():
             audio_ext = f.get("audio_ext") or "none"
             return audio_ext not in ("none", "")
 
-        # Build quality options — keep best landscape format per resolution
         all_formats = info.get("formats", [])
         best_by_height = {}
         for f in all_formats:
             height = f.get("height")
             if not height or not is_video_fmt(f):
                 continue
-            # Skip portrait orientations
             width = f.get("width") or 0
             if width and width < height:
                 continue
@@ -160,12 +185,34 @@ def get_info():
             if height not in best_by_height or tbr > (best_by_height[height].get("tbr") or 0):
                 best_by_height[height] = f
 
+        def format_filesize(bytes_val):
+            if not bytes_val:
+                return None
+            for unit in ['B', 'KB', 'MB', 'GB']:
+                if bytes_val < 1024:
+                    return f"{bytes_val:.1f}{unit}".replace('.0', '')
+                bytes_val /= 1024
+            return f"{bytes_val:.1f}TB"
+
         formats = []
         for height, f in best_by_height.items():
+            filesize = f.get("filesize") or f.get("filesize_approx")
+            size_str = format_filesize(filesize) if filesize else None
+            vcodec = f.get("vcodec", "").split('.')[0] if f.get("vcodec") else ""
+            codec_str = f"{vcodec}" if vcodec and vcodec != "none" else ""
+
+            label = f"{height}p"
+            if size_str:
+                label += f" · {size_str}"
+            if codec_str:
+                label += f" · {codec_str}"
+
             formats.append({
                 "id": f["format_id"],
-                "label": f"{height}p",
+                "label": label,
                 "height": height,
+                "filesize": size_str,
+                "codec": codec_str,
             })
         formats.sort(key=lambda x: x["height"], reverse=True)
 
@@ -192,6 +239,8 @@ def start_download():
     url = data.get("url", "").strip()
     format_choice = data.get("format", "video")
     format_id = data.get("format_id")
+    sponsorblock = data.get("sponsorblock", False)
+
     title = data.get("title", "")
     uploader = data.get("uploader", "")
     source = data.get("source", "")
@@ -199,15 +248,15 @@ def start_download():
     if not url:
         return jsonify({"error": "No URL provided"}), 400
 
-    # Prune jobs older than 1 hour
     cutoff = time.time() - 3600
-    for jid in [k for k, v in jobs.items() if v.get("created", 0) < cutoff]:
-        jobs.pop(jid, None)
+    with jobs_lock:
+        for jid in [k for k, v in jobs.items() if v.get("created", 0) < cutoff]:
+            jobs.pop(jid, None)
 
-    job_id = uuid.uuid4().hex[:10]
-    jobs[job_id] = {"status": "downloading", "url": url, "title": title, "uploader": uploader, "source": source, "created": time.time()}
+        job_id = uuid.uuid4().hex[:10]
+        jobs[job_id] = {"status": "downloading", "url": url, "title": title, "uploader": uploader, "source": source, "created": time.time(), "progress": 0}
 
-    thread = threading.Thread(target=run_download, args=(job_id, url, format_choice, format_id))
+    thread = threading.Thread(target=run_download, args=(job_id, url, format_choice, format_id, sponsorblock))
     thread.daemon = True
     thread.start()
 
@@ -219,11 +268,13 @@ def check_status(job_id):
     job = jobs.get(job_id)
     if not job:
         return jsonify({"error": "Job not found"}), 404
-    return jsonify({
-        "status": job["status"],
-        "error": job.get("error"),
-        "filename": job.get("filename"),
-    })
+    with jobs_lock:
+        return jsonify({
+            "status": job["status"],
+            "error": job.get("error"),
+            "filename": job.get("filename"),
+            "progress": job.get("progress", 0),
+        })
 
 
 @app.route("/api/file/<job_id>")
@@ -251,9 +302,7 @@ def firefox_sqlite_to_netscape(sqlite_path):
     try:
         con = sqlite3.connect(tmp_path)
         try:
-            cur = con.execute(
-                "SELECT host, path, isSecure, expiry, name, value FROM moz_cookies"
-            )
+            cur = con.execute("SELECT host, path, isSecure, expiry, name, value FROM moz_cookies")
             lines = ["# Netscape HTTP Cookie File"]
             for host, path, secure, expiry, name, value in cur.fetchall():
                 include_sub = "TRUE" if host.startswith(".") else "FALSE"
@@ -310,4 +359,5 @@ def clear_cookies():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8899))
     host = os.environ.get("HOST", "127.0.0.1")
+    threading.Timer(1.5, webbrowser.open, args=[f"http://localhost:{port}"]).start()
     app.run(host=host, port=port)

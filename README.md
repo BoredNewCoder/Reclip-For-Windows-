@@ -31,20 +31,29 @@ First run installs Python dependencies automatically. Open **http://localhost:88
 
 1. Paste one or more URLs into the input box
 2. Choose **MP4** (video) or **MP3** (audio)
-3. Click **Fetch**
-4. Select quality if prompted
-5. Click **Download** — file saves to `downloads\` folder
+3. Click **Fetch** — shows available formats with quality, codec, and file size
+4. Select quality (higher resolution = larger file)
+5. Click **Download** — real-time progress bar shows download % · file saves to `downloads\` folder
+
+### Batch Downloads
+
+- Paste multiple URLs, then click **Download All** — all videos download simultaneously
+- Progress shows live % for each download
 
 ## Unlocking Age-Restricted & Private Content
 
 Some videos require you to be logged in (age-restricted YouTube, subscriber-only Twitch VODs, etc). ReClip can import your browser session to unlock them:
 
-- Click **Import from Firefox** in the cookie bar (one click, no extensions needed)
-- Or click **Upload cookies.txt** and export cookies manually using the [Get cookies.txt LOCALLY](https://chrome.google.com/webstore/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc) extension
+- Click the cookie icon (🍪) next to the Fetch button, then **Import Firefox** (one click, no extensions needed)
+- Or click **Upload .txt** and export cookies manually using the [Get cookies.txt LOCALLY](https://chrome.google.com/webstore/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc) extension
 
-The cookie bar shows **Cookies active** in green when unlocked. Cookies can be removed at any time.
+The cookie icon turns green when cookies are active. Click it again to remove cookies at any time.
 
 > **Note:** True Widevine DRM content (YouTube Premium movies, etc.) cannot be downloaded by any tool.
+
+## Interface
+
+- **Dark mode** — click the sun/moon icon in the top-right corner; preference persists across sessions and respects your OS setting automatically
 
 ## Notes
 

@@ -1,55 +1,73 @@
 @echo off
 setlocal
-
 cd /d "%~dp0"
 
-:: Check prerequisites
-set MISSING=
+echo.
+echo ================================================
+echo               ReClip Launcher
+echo ================================================
+echo.
 
-:: Use --version not where -- avoids Win11 fake python Store stub
-python --version >nul 2>&1 || set MISSING=%MISSING% python
-ffmpeg  -version >nul 2>&1 || set MISSING=%MISSING% ffmpeg
-
-if not "%MISSING%"=="" (
-    echo Missing required tools:%MISSING%
-    echo.
-    echo Install with winget:
-    echo %MISSING% | findstr /i "python" >nul && echo   winget install Python.Python.3
-    echo %MISSING% | findstr /i "ffmpeg" >nul && echo   winget install Gyan.FFmpeg
-    echo.
-    echo After installing, open a NEW terminal and run reclip.bat again.
-    pause
-    exit /b 1
-)
-
-:: Set up venv (yt-dlp installed here via requirements.txt -- no system install needed)
-if not exist "venv\" (
-    echo Setting up virtual environment...
-    python -m venv venv
-    if errorlevel 1 (
-        echo Failed to create virtual environment. Is Python installed correctly?
-        echo Run: winget install Python.Python.3
-        echo Then open a NEW terminal and try again.
+:: ==================== PYTHON SETUP ====================
+if not exist "python\python.exe" (
+    echo Downloading Python, please wait...
+    powershell -Command "Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.13.3/python-3.13.3-embed-amd64.zip' -OutFile 'python-embed.zip' -UseBasicParsing"
+    if not exist "python-embed.zip" (
+        echo.
+        echo ERROR: Download failed. Check your internet connection.
+        echo Close this window and run reclip.bat again.
+        echo.
         pause
         exit /b 1
     )
-    venv\Scripts\pip install -q -r requirements.txt
+    powershell -Command "Expand-Archive -Path 'python-embed.zip' -DestinationPath 'python' -Force"
+    del python-embed.zip
+
+    :: Enable site-packages so pip works
+    powershell -Command "(Get-Content 'python\python313._pth') -replace '#import site','import site' | Set-Content 'python\python313._pth'"
+
+    :: Install pip
+    echo Installing pip...
+    powershell -Command "Invoke-WebRequest -Uri 'https://bootstrap.pypa.io/get-pip.py' -OutFile 'get-pip.py' -UseBasicParsing"
+    python\python.exe get-pip.py -q
+    del get-pip.py
 )
 
-if not defined PORT set PORT=8899
+echo Python OK.
 
-:: Kill any stale ReClip process on this port
-for /f "tokens=5" %%p in ('netstat -ano ^| findstr ":%PORT% " ^| findstr "LISTENING"') do (
+:: ==================== DEPENDENCIES ====================
+if not exist "python\Lib\site-packages\flask" (
+    echo First-time setup: downloading packages, this may take a few minutes...
+) else (
+    echo Checking for updates...
+)
+python\python.exe -m pip install -U -r requirements.txt -q
+echo Ready.
+
+:: ==================== KILL STALE PORT ====================
+if not defined PORT set PORT=8899
+for /f "tokens=5" %%p in ('netstat -ano ^| findstr ":%PORT% " ^| findstr "LISTENING" 2^>nul') do (
     taskkill /F /PID %%p >nul 2>&1
 )
 
+:: ==================== LAUNCH ====================
 echo.
-echo   ReClip is running at http://localhost:%PORT%
+echo ================================================
+echo  ReClip is running!
+echo.
+echo  Your browser will open automatically.
+echo  If it doesn't, go to: http://localhost:%PORT%
+echo.
+echo  Keep this window open while using ReClip.
+echo  To stop ReClip: press Ctrl+C or close this window.
+echo ================================================
 echo.
 
-venv\Scripts\python app.py
+python\python.exe app.py
+
 if errorlevel 1 (
     echo.
-    echo Error starting ReClip. See above for details.
+    echo ReClip stopped unexpectedly.
+    echo.
     pause
 )

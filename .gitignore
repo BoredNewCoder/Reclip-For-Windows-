@@ -1,4 +1,5 @@
 venv/
+python/
 downloads/
 cookies.txt
 __pycache__/
