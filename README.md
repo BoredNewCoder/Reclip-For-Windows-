@@ -7,25 +7,13 @@ Self-hosted video and audio downloader. Paste URLs from YouTube, TikTok, Instagr
 ## Requirements
 
 - Windows 11
-- [Python 3.8+](https://www.python.org/)
-- [ffmpeg](https://ffmpeg.org/)
+- Internet connection (first run only)
 
 ## Setup
 
-**1. Install prerequisites** (one-time, open any terminal):
+Double-click **reclip.bat**.
 
-```
-winget install Python.Python.3
-winget install Gyan.FFmpeg
-```
-
-**2. Open a new terminal**, then run:
-
-```
-reclip.bat
-```
-
-First run installs Python dependencies automatically. Open **http://localhost:8899**.
+First run downloads everything automatically (~80MB). Your browser opens when ready.
 
 ## Usage
 
@@ -61,6 +49,8 @@ The cookie icon turns green when cookies are active. Click it again to remove co
 - Downloads saved to `downloads\` folder with filename format: `Title - Channel - Source.mp4`
 - Duplicate filenames get a counter suffix: `Title (1).mp4`, `Title (2).mp4`
 - Supports 1000+ sites via [yt-dlp](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md)
+- yt-dlp updates automatically on each launch to stay compatible with sites
+- Python and ffmpeg are self-contained in the `python\` folder — nothing installed system-wide
 - Re-launching `reclip.bat` automatically clears any stale server process
 
 ## License
