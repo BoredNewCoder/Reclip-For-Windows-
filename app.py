@@ -55,16 +55,36 @@ def run_download(job_id, url, format_choice, format_id, sponsorblock=False):
 
     try:
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
-        last_error = ""
+        with jobs_lock:
+            job["proc"] = proc
 
-        for line in proc.stdout:
-            last_error = line.strip()
-            match = re.search(r'\[download\]\s+([\d.]+)%', line)
-            if match:
-                with jobs_lock:
-                    job["progress"] = float(match.group(1))
+        def _kill_on_timeout():
+            proc.kill()
+            with jobs_lock:
+                if job.get("status") == "downloading":
+                    job["status"] = "error"
+                    job["error"] = "Download timed out after 2 hours"
+
+        timeout_timer = threading.Timer(7200, _kill_on_timeout)
+        timeout_timer.start()
+
+        last_error = ""
+        try:
+            for line in proc.stdout:
+                last_error = line.strip()
+                match = re.search(r'\[download\]\s+([\d.]+)%', line)
+                if match:
+                    with jobs_lock:
+                        job["progress"] = float(match.group(1))
+        finally:
+            timeout_timer.cancel()
 
         returncode = proc.wait()
+
+        with jobs_lock:
+            if job.get("status") != "downloading":
+                return
+
         if returncode != 0:
             with jobs_lock:
                 job["status"] = "error"
@@ -283,6 +303,28 @@ def download_file(job_id):
     if not job or job["status"] != "done":
         return jsonify({"error": "File not ready"}), 404
     return send_file(job["file"], as_attachment=True, download_name=job["filename"])
+
+
+@app.route("/api/cancel/<job_id>", methods=["POST"])
+def cancel_download(job_id):
+    job = jobs.get(job_id)
+    if not job:
+        return jsonify({"error": "Job not found"}), 404
+    with jobs_lock:
+        proc = job.get("proc")
+        job["status"] = "cancelled"
+        job["error"] = "Cancelled"
+    if proc:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+    for f in glob.glob(os.path.join(DOWNLOAD_DIR, f"{job_id}.*")):
+        try:
+            os.remove(f)
+        except OSError:
+            pass
+    return jsonify({"ok": True})
 
 
 def find_firefox_cookies():
