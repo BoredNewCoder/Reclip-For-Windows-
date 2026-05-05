@@ -15,10 +15,17 @@ import imageio_ffmpeg
 from html import unescape
 from flask import Flask, request, jsonify, send_file, render_template
 
-app = Flask(__name__)
-DOWNLOAD_DIR = os.path.join(os.path.dirname(__file__), "downloads")
-JOBS_DIR = os.path.join(os.path.dirname(__file__), ".jobs")
-COOKIES_FILE = os.path.join(os.path.dirname(__file__), "cookies.txt")
+if getattr(sys, "frozen", False):
+    BASE_DIR = os.path.dirname(sys.executable)
+    RESOURCE_DIR = sys._MEIPASS
+else:
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    RESOURCE_DIR = BASE_DIR
+
+app = Flask(__name__, template_folder=os.path.join(RESOURCE_DIR, "templates"))
+DOWNLOAD_DIR = os.path.join(BASE_DIR, "downloads")
+JOBS_DIR = os.path.join(BASE_DIR, ".jobs")
+COOKIES_FILE = os.path.join(BASE_DIR, "cookies.txt")
 YTDLP = [sys.executable, "-m", "yt_dlp"]
 FFMPEG_PATH = imageio_ffmpeg.get_ffmpeg_exe()
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
@@ -199,7 +206,7 @@ def run_download(job_id, url, format_choice, format_id, sponsorblock=False, resu
 
 @app.route("/favicon.svg")
 def favicon():
-    return send_file(os.path.join(os.path.dirname(__file__), "templates", "favicon.svg"), mimetype="image/svg+xml")
+    return send_file(os.path.join(RESOURCE_DIR, "templates", "favicon.svg"), mimetype="image/svg+xml")
 
 
 @app.route("/")
