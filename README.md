@@ -24,7 +24,7 @@ First run downloads everything automatically (~80MB). Your browser opens when re
 3. Click **Fetch** — shows available formats with quality, codec, and file size
 4. Select quality (higher resolution = larger file)
 5. Click **Download** — real-time progress bar shows download % · file saves to `downloads\` folder
-6. Click **Cancel** on any in-progress download to stop it
+6. Click **Pause** to pause a download and resume it later — or **Cancel** to stop and discard it
 
 ### Batch Downloads
 
@@ -36,7 +36,10 @@ Downloads are saved to the `downloads\` folder inside the ReClip directory.
 
 - **Remove Sponsors** — automatically skips sponsor segments via SponsorBlock (YouTube)
 - **Dark mode** — click the sun/moon icon top-right; respects OS setting, persists across sessions
-- **Cancel downloads** — stop any in-progress download; reverts card to ready state
+- **Pause & Resume** — pause any active download and resume it later; progress is preserved
+- **Cancel downloads** — stop any in-progress or paused download and discard the partial file
+- **Auto-retry on network drops** — retries failed requests up to 50 times automatically
+- **Crash recovery** — if the server restarts mid-download, active and paused downloads are restored on next launch
 - **2-hour timeout** — downloads that hang are automatically cancelled after 2 hours
 - **Cookies for restricted content** — unlock age-restricted and subscriber-only videos
 
@@ -45,7 +48,8 @@ Downloads are saved to the `downloads\` folder inside the ReClip directory.
 Click the cookie icon next to Fetch:
 
 - **Import Firefox** — one click, no extensions needed
-- **Upload .txt** — export cookies manually using [Get cookies.txt LOCALLY](https://chrome.google.com/webstore/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc)
+- **Upload .txt** — export cookies manually using a browser extension
+- **Get Extension ↗** — opens [Get cookies.txt LOCALLY](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc) in Chrome Web Store directly from the panel
 
 The cookie icon turns green when active. Click again to remove.
 
@@ -61,6 +65,10 @@ set PORT=9000 && reclip.bat
 - Run `reclip.bat` anytime — it auto-cleans old processes
 - Downloads saved to `downloads\` with filename format: `Title - Channel - Source.mp4`
 - Duplicate filenames get a counter suffix: `Title (1).mp4`, `Title (2).mp4`
+- Paused and interrupted downloads resume using yt-dlp's partial file (`.part`) — no re-downloading from scratch
+- Paused/active job state is stored in `.jobs\` — do not delete this folder while downloads are in progress
+- Pause/resume works within the same browser session; closing the tab while paused is safe (state survives server restart)
+- Platform chips at the bottom are clickable — open each site in a new tab; **1000+ more** links to the full yt-dlp supported sites list
 - Supports 1000+ sites via [yt-dlp](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md)
 - yt-dlp updates automatically on each launch
 - Python and FFmpeg are self-contained in `python\` — nothing installed system-wide

@@ -17,14 +17,17 @@ from flask import Flask, request, jsonify, send_file, render_template
 
 app = Flask(__name__)
 DOWNLOAD_DIR = os.path.join(os.path.dirname(__file__), "downloads")
+JOBS_DIR = os.path.join(os.path.dirname(__file__), ".jobs")
 COOKIES_FILE = os.path.join(os.path.dirname(__file__), "cookies.txt")
 YTDLP = [sys.executable, "-m", "yt_dlp"]
 FFMPEG_PATH = imageio_ffmpeg.get_ffmpeg_exe()
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+os.makedirs(JOBS_DIR, exist_ok=True)
 
 
 def base_cmd():
-    cmd = YTDLP + ["--no-playlist", "--ffmpeg-location", FFMPEG_PATH]
+    cmd = YTDLP + ["--no-playlist", "--ffmpeg-location", FFMPEG_PATH,
+                   "--retries", "50", "--fragment-retries", "50", "--retry-sleep", "5"]
     if os.path.isfile(COOKIES_FILE):
         cmd += ["--cookies", COOKIES_FILE]
     return cmd
@@ -34,11 +37,47 @@ jobs = {}
 jobs_lock = threading.Lock()
 
 
-def run_download(job_id, url, format_choice, format_id, sponsorblock=False):
+def save_job_state(job_id):
+    job = jobs.get(job_id)
+    if not job:
+        return
+    state = {
+        "job_id": job_id,
+        "status": job.get("status"),
+        "url": job.get("url", ""),
+        "title": job.get("title", ""),
+        "thumbnail": job.get("thumbnail", ""),
+        "uploader": job.get("uploader", ""),
+        "source": job.get("source", ""),
+        "duration": job.get("duration"),
+        "format_choice": job.get("format_choice", "video"),
+        "format_id": job.get("format_id"),
+        "sponsorblock": job.get("sponsorblock", False),
+        "progress": job.get("progress", 0),
+        "created": job.get("created", time.time()),
+    }
+    try:
+        with open(os.path.join(JOBS_DIR, f"{job_id}.json"), "w") as f:
+            json.dump(state, f)
+    except OSError:
+        pass
+
+
+def delete_job_state(job_id):
+    try:
+        os.remove(os.path.join(JOBS_DIR, f"{job_id}.json"))
+    except OSError:
+        pass
+
+
+def run_download(job_id, url, format_choice, format_id, sponsorblock=False, resume=False):
     job = jobs[job_id]
     out_template = os.path.join(DOWNLOAD_DIR, f"{job_id}.%(ext)s")
 
     cmd = base_cmd() + ["-o", out_template]
+
+    if resume:
+        cmd += ["--continue"]
 
     # SponsorBlock - using "mark" because "remove" has timestamp bugs
     if sponsorblock:
@@ -89,6 +128,7 @@ def run_download(job_id, url, format_choice, format_id, sponsorblock=False):
             with jobs_lock:
                 job["status"] = "error"
                 job["error"] = last_error if last_error else "Download failed"
+            delete_job_state(job_id)
             return
 
         files = glob.glob(os.path.join(DOWNLOAD_DIR, f"{job_id}.*"))
@@ -149,10 +189,12 @@ def run_download(job_id, url, format_choice, format_id, sponsorblock=False):
             job["progress"] = 100
             job["file"] = chosen
             job["filename"] = os.path.basename(chosen)
+        delete_job_state(job_id)
     except Exception as e:
         with jobs_lock:
             job["status"] = "error"
             job["error"] = str(e)
+        delete_job_state(job_id)
 
 
 @app.route("/favicon.svg")
@@ -262,8 +304,10 @@ def start_download():
     sponsorblock = data.get("sponsorblock", False)
 
     title = data.get("title", "")
+    thumbnail = data.get("thumbnail", "")
     uploader = data.get("uploader", "")
     source = data.get("source", "")
+    duration = data.get("duration")
 
     if not url:
         return jsonify({"error": "No URL provided"}), 400
@@ -274,8 +318,9 @@ def start_download():
             jobs.pop(jid, None)
 
         job_id = uuid.uuid4().hex[:10]
-        jobs[job_id] = {"status": "downloading", "url": url, "title": title, "uploader": uploader, "source": source, "created": time.time(), "progress": 0}
+        jobs[job_id] = {"status": "downloading", "url": url, "title": title, "thumbnail": thumbnail, "uploader": uploader, "source": source, "duration": duration, "created": time.time(), "progress": 0, "format_choice": format_choice, "format_id": format_id, "sponsorblock": sponsorblock}
 
+    save_job_state(job_id)
     thread = threading.Thread(target=run_download, args=(job_id, url, format_choice, format_id, sponsorblock))
     thread.daemon = True
     thread.start()
@@ -305,6 +350,45 @@ def download_file(job_id):
     return send_file(job["file"], as_attachment=True, download_name=job["filename"])
 
 
+@app.route("/api/pause/<job_id>", methods=["POST"])
+def pause_download(job_id):
+    job = jobs.get(job_id)
+    if not job:
+        return jsonify({"error": "Job not found"}), 404
+    with jobs_lock:
+        proc = job.get("proc")
+        job["status"] = "paused"
+    if proc:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+    save_job_state(job_id)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/resume/<job_id>", methods=["POST"])
+def resume_download(job_id):
+    job = jobs.get(job_id)
+    if not job:
+        return jsonify({"error": "Job not found"}), 404
+    with jobs_lock:
+        if job["status"] != "paused":
+            return jsonify({"error": "Job is not paused"}), 400
+        job["status"] = "downloading"
+        job["proc"] = None
+        url = job["url"]
+        format_choice = job["format_choice"]
+        format_id = job["format_id"]
+        sponsorblock = job["sponsorblock"]
+
+    save_job_state(job_id)
+    thread = threading.Thread(target=run_download, args=(job_id, url, format_choice, format_id, sponsorblock), kwargs={"resume": True})
+    thread.daemon = True
+    thread.start()
+    return jsonify({"ok": True})
+
+
 @app.route("/api/cancel/<job_id>", methods=["POST"])
 def cancel_download(job_id):
     job = jobs.get(job_id)
@@ -324,7 +408,70 @@ def cancel_download(job_id):
             os.remove(f)
         except OSError:
             pass
+    delete_job_state(job_id)
     return jsonify({"ok": True})
+
+
+def recover_jobs():
+    for path in glob.glob(os.path.join(JOBS_DIR, "*.json")):
+        try:
+            with open(path) as f:
+                state = json.load(f)
+            job_id = state.get("job_id")
+            status = state.get("status")
+            if not job_id or status not in ("downloading", "paused"):
+                os.remove(path)
+                continue
+            with jobs_lock:
+                jobs[job_id] = {
+                    "status": status,
+                    "url": state.get("url", ""),
+                    "title": state.get("title", ""),
+                    "thumbnail": state.get("thumbnail", ""),
+                    "uploader": state.get("uploader", ""),
+                    "source": state.get("source", ""),
+                    "duration": state.get("duration"),
+                    "format_choice": state.get("format_choice", "video"),
+                    "format_id": state.get("format_id"),
+                    "sponsorblock": state.get("sponsorblock", False),
+                    "progress": state.get("progress", 0),
+                    "created": state.get("created", time.time()),
+                }
+            if status == "downloading":
+                url = state.get("url", "")
+                format_choice = state.get("format_choice", "video")
+                format_id = state.get("format_id")
+                sponsorblock = state.get("sponsorblock", False)
+                thread = threading.Thread(
+                    target=run_download,
+                    args=(job_id, url, format_choice, format_id, sponsorblock),
+                    kwargs={"resume": True}
+                )
+                thread.daemon = True
+                thread.start()
+        except Exception:
+            pass
+
+
+@app.route("/api/jobs")
+def list_jobs():
+    with jobs_lock:
+        active = [
+            {
+                "job_id": jid,
+                "status": job["status"],
+                "url": job.get("url", ""),
+                "title": job.get("title", ""),
+                "thumbnail": job.get("thumbnail", ""),
+                "uploader": job.get("uploader", ""),
+                "source": job.get("source", ""),
+                "duration": job.get("duration"),
+                "progress": job.get("progress", 0),
+            }
+            for jid, job in jobs.items()
+            if job.get("status") in ("downloading", "paused")
+        ]
+    return jsonify(active)
 
 
 def find_firefox_cookies():
@@ -399,6 +546,7 @@ def clear_cookies():
 
 
 if __name__ == "__main__":
+    recover_jobs()
     port = int(os.environ.get("PORT", 8899))
     host = os.environ.get("HOST", "127.0.0.1")
     threading.Timer(1.5, webbrowser.open, args=[f"http://localhost:{port}"]).start()

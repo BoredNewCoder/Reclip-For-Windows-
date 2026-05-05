@@ -456,6 +456,7 @@
       border: 1px solid var(--card-border);
       border-radius: 20px;
       transition: border-color 0.2s, color 0.2s;
+      text-decoration: none;
     }
     .platform-chip:hover { border-color: var(--muted); color: var(--fg); }
 
@@ -584,23 +585,23 @@
     </div>
 
     <div class="footer">
-      <span class="platform-chip">YouTube</span>
-      <span class="platform-chip">TikTok</span>
-      <span class="platform-chip">Instagram</span>
-      <span class="platform-chip">Twitter/X</span>
-      <span class="platform-chip">Reddit</span>
-      <span class="platform-chip">Facebook</span>
-      <span class="platform-chip">Vimeo</span>
-      <span class="platform-chip">Twitch</span>
-      <span class="platform-chip">Dailymotion</span>
-      <span class="platform-chip">SoundCloud</span>
-      <span class="platform-chip">Loom</span>
-      <span class="platform-chip">Streamable</span>
-      <span class="platform-chip">Pinterest</span>
-      <span class="platform-chip">Tumblr</span>
-      <span class="platform-chip">Threads</span>
-      <span class="platform-chip">LinkedIn</span>
-      <span class="platform-chip">1000+ more</span>
+      <a class="platform-chip" href="https://www.youtube.com" target="_blank" rel="noopener noreferrer">YouTube</a>
+      <a class="platform-chip" href="https://www.tiktok.com" target="_blank" rel="noopener noreferrer">TikTok</a>
+      <a class="platform-chip" href="https://www.instagram.com" target="_blank" rel="noopener noreferrer">Instagram</a>
+      <a class="platform-chip" href="https://www.x.com" target="_blank" rel="noopener noreferrer">Twitter/X</a>
+      <a class="platform-chip" href="https://www.reddit.com" target="_blank" rel="noopener noreferrer">Reddit</a>
+      <a class="platform-chip" href="https://www.facebook.com" target="_blank" rel="noopener noreferrer">Facebook</a>
+      <a class="platform-chip" href="https://www.vimeo.com" target="_blank" rel="noopener noreferrer">Vimeo</a>
+      <a class="platform-chip" href="https://www.twitch.tv" target="_blank" rel="noopener noreferrer">Twitch</a>
+      <a class="platform-chip" href="https://www.dailymotion.com" target="_blank" rel="noopener noreferrer">Dailymotion</a>
+      <a class="platform-chip" href="https://www.soundcloud.com" target="_blank" rel="noopener noreferrer">SoundCloud</a>
+      <a class="platform-chip" href="https://www.loom.com" target="_blank" rel="noopener noreferrer">Loom</a>
+      <a class="platform-chip" href="https://www.streamable.com" target="_blank" rel="noopener noreferrer">Streamable</a>
+      <a class="platform-chip" href="https://www.pinterest.com" target="_blank" rel="noopener noreferrer">Pinterest</a>
+      <a class="platform-chip" href="https://www.tumblr.com" target="_blank" rel="noopener noreferrer">Tumblr</a>
+      <a class="platform-chip" href="https://www.threads.net" target="_blank" rel="noopener noreferrer">Threads</a>
+      <a class="platform-chip" href="https://www.linkedin.com" target="_blank" rel="noopener noreferrer">LinkedIn</a>
+      <a class="platform-chip" href="https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md" target="_blank" rel="noopener noreferrer">1000+ more</a>
     </div>
   </div>
 
@@ -802,9 +803,18 @@
       } else if (c.status === 'downloading') {
         const progress = c.progress || 0;
         actionHtml = `
-          <button class="card-dl-btn" onclick="cancelCard(${idx})" style="background:var(--muted);color:var(--bg)">Cancel</button>
+          <button class="card-dl-btn" onclick="pauseCard(${idx})" style="background:var(--muted);color:var(--bg)">Pause</button>
+          <button class="card-dl-btn" onclick="cancelCard(${idx})" style="background:transparent;color:var(--muted);border:1.5px solid var(--card-border)">Cancel</button>
           <span class="card-status downloading"><span class="spin"></span> ${progress.toFixed(0)}%</span>
           <progress value="${progress}" max="100" style="width:100%;height:4px;border:none;border-radius:2px;margin-top:6px;accent-color:var(--accent)"></progress>
+        `;
+      } else if (c.status === 'paused') {
+        const progress = c.progress || 0;
+        actionHtml = `
+          <button class="card-dl-btn" onclick="resumeCard(${idx})">Resume</button>
+          <button class="card-dl-btn" onclick="cancelCard(${idx})" style="background:transparent;color:var(--muted);border:1.5px solid var(--card-border)">Cancel</button>
+          <span class="card-status" style="color:var(--muted)">Paused · ${progress.toFixed(0)}%</span>
+          <progress value="${progress}" max="100" style="width:100%;height:4px;border:none;border-radius:2px;margin-top:6px;accent-color:var(--muted)"></progress>
         `;
       } else if (c.status === 'done') {
         actionHtml = `<span class="card-status done">Saved → downloads/${esc(c.filename || '')}</span>`;
@@ -856,8 +866,10 @@
             format: currentFormat,
             format_id: c.selectedFormatId,
             title: c.title || '',
+            thumbnail: c.thumbnail || '',
             uploader: c.uploader || '',
             source: c.source || '',
+            duration: c.duration || null,
             sponsorblock: sponsorblock
           }),
         });
@@ -902,6 +914,11 @@
             c.status = 'ready';
             c.progress = 0;
             renderCard(idx);
+          } else if (data.status === 'paused') {
+            clearInterval(iv);
+            c._poll = null;
+            c.status = 'paused';
+            renderCard(idx);
           } else if (data.status === 'downloading') {
             c.progress = data.progress || 0;
             renderCard(idx);
@@ -917,6 +934,37 @@
       c._poll = iv;
     }
 
+    async function pauseCard(idx) {
+      const c = cardData[idx];
+      if (!c.jobId) return;
+      if (c._poll) { clearInterval(c._poll); c._poll = null; }
+      try { await fetch(`/api/pause/${c.jobId}`, { method: 'POST' }); } catch {}
+      c.status = 'paused';
+      renderCard(idx);
+    }
+
+    async function resumeCard(idx) {
+      const c = cardData[idx];
+      if (!c.jobId) return;
+      c.status = 'downloading';
+      renderCard(idx);
+      try {
+        const res = await fetch(`/api/resume/${c.jobId}`, { method: 'POST' });
+        const data = await res.json();
+        if (data.error) {
+          c.status = 'error';
+          c.error = data.error;
+          renderCard(idx);
+          return;
+        }
+        pollCard(idx);
+      } catch (err) {
+        c.status = 'error';
+        c.error = err.message;
+        renderCard(idx);
+      }
+    }
+
     async function cancelCard(idx) {
       const c = cardData[idx];
       if (!c.jobId) return;
@@ -925,15 +973,6 @@
       c.status = 'ready';
       c.progress = 0;
       renderCard(idx);
-    }
-
-    let cookiePanelOpen = false;
-
-    function toggleCookiePanel() {
-      cookiePanelOpen = !cookiePanelOpen;
-      const panel = document.getElementById('cookiePanel');
-      if (cookiePanelOpen) panel.classList.add('open');
-      else panel.classList.remove('open');
     }
 
     let cookiePanelOpen = false;
@@ -984,6 +1023,15 @@
           uploadBtn.textContent = 'Upload .txt';
           uploadBtn.onclick = () => panel.querySelector('input[type=file]').click();
           panel.appendChild(uploadBtn);
+
+          const extBtn = document.createElement('a');
+          extBtn.className = 'cookie-btn';
+          extBtn.textContent = 'Get Extension ↗';
+          extBtn.href = 'https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc';
+          extBtn.target = '_blank';
+          extBtn.rel = 'noopener noreferrer';
+          extBtn.style.textDecoration = 'none';
+          panel.appendChild(extBtn);
         }
 
         const newInput = document.createElement('input');
@@ -1034,8 +1082,40 @@
       if (btn) { btn.disabled = false; btn.textContent = 'Download All'; }
     }
 
+    async function loadActiveJobs() {
+      try {
+        const res = await fetch('/api/jobs');
+        const jobs = await res.json();
+        if (!jobs.length) return;
+
+        const container = document.getElementById('cards');
+        const emptyState = container.querySelector('.empty-state');
+        if (emptyState) emptyState.remove();
+
+        for (const job of jobs) {
+          const idx = cardData.length;
+          cardData.push({
+            url: job.url || '',
+            status: job.status,
+            jobId: job.job_id,
+            title: job.title || '',
+            thumbnail: job.thumbnail || '',
+            uploader: job.uploader || '',
+            source: job.source || '',
+            duration: job.duration || null,
+            progress: job.progress || 0,
+          });
+          renderCard(idx);
+          if (job.status === 'downloading') {
+            pollCard(idx);
+          }
+        }
+      } catch {}
+    }
+
     // Initialize
     loadCookieStatus();
+    loadActiveJobs();
   </script>
 </body>
 </html>
