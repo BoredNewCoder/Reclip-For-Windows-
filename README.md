@@ -24,52 +24,48 @@ First run downloads everything automatically (~80MB). Your browser opens when re
 3. Click **Fetch** — shows available formats with quality, codec, and file size
 4. Select quality (higher resolution = larger file)
 5. Click **Download** — real-time progress bar shows download % · file saves to `downloads\` folder
+6. Click **Cancel** on any in-progress download to stop it
 
 ### Batch Downloads
 
-- Paste multiple URLs, then click **Download All** — all videos download simultaneously
-- Progress shows live % for each download
+Paste multiple URLs (spaces, commas, or newlines), then click **Download All** — all downloads run simultaneously with live progress per item.
 
 Downloads are saved to the `downloads\` folder inside the ReClip directory.
 
-### Useful Features
-- **Remove Sponsors**: Enable to automatically skip sponsor segments using SponsorBlock.
-- **Batch Downloads**: Paste multiple URLs (one per line) and click **Download All**.
-- **Cookies for Restricted Content**: Click the cookie icon → **Import Firefox** (easiest) or upload `cookies.txt`.
+## Features
 
-- Click the cookie icon (🍪) next to the Fetch button, then **Import Firefox** (one click, no extensions needed)
-- Or click **Upload .txt** and export cookies manually using the [Get cookies.txt LOCALLY](https://chrome.google.com/webstore/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc) extension
+- **Remove Sponsors** — automatically skips sponsor segments via SponsorBlock (YouTube)
+- **Dark mode** — click the sun/moon icon top-right; respects OS setting, persists across sessions
+- **Cancel downloads** — stop any in-progress download; reverts card to ready state
+- **2-hour timeout** — downloads that hang are automatically cancelled after 2 hours
+- **Cookies for restricted content** — unlock age-restricted and subscriber-only videos
 
-The cookie icon turns green when cookies are active. Click it again to remove cookies at any time.
+### Cookies
+
+Click the cookie icon next to Fetch:
+
+- **Import Firefox** — one click, no extensions needed
+- **Upload .txt** — export cookies manually using [Get cookies.txt LOCALLY](https://chrome.google.com/webstore/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc)
+
+The cookie icon turns green when active. Click again to remove.
 
 ## Changing the Port
-Run from Command Prompt:
+
+```
 set PORT=9000 && reclip.bat
-
-## Interface
-
-- **Dark mode** — click the sun/moon icon in the top-right corner; preference persists across sessions and respects your OS setting automatically
+```
 
 ## Notes
 
 - First run takes longer (installs tools + dependencies)
 - Run `reclip.bat` anytime — it auto-cleans old processes
-- To use a different port: Edit `reclip.bat` or set `PORT=9000` before running
-- Downloads saved to `downloads\` folder with filename format: `Title - Channel - Source.mp4`
+- Downloads saved to `downloads\` with filename format: `Title - Channel - Source.mp4`
 - Duplicate filenames get a counter suffix: `Title (1).mp4`, `Title (2).mp4`
 - Supports 1000+ sites via [yt-dlp](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md)
-- yt-dlp updates automatically on each launch to stay compatible with sites
-- Python and ffmpeg are self-contained in the `python\` folder — nothing installed system-wide
-- Re-launching `reclip.bat` automatically clears any stale server process
-
-## Disclaimer
-
-For personal use only. You are responsible for complying with the terms of service and copyright laws of the sites you use.
-
----
-
-Made for Windows users who just want it to work.
+- yt-dlp updates automatically on each launch
+- Python and FFmpeg are self-contained in `python\` — nothing installed system-wide
+- Re-launching `reclip.bat` clears any stale server process
 
 ## License
 
-MIT — see [LICENSE](LICENSE). This tool is provided as-is with no warranty. You are responsible for your own use.
+MIT — see [LICENSE](LICENSE). Provided as-is, no warranty. You are responsible for your own use.
