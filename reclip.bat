@@ -11,7 +11,7 @@ echo.
 :: ==================== PYTHON SETUP ====================
 if not exist "python\python.exe" (
     echo Downloading Python, please wait...
-    powershell -Command "Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.13.3/python-3.13.3-embed-amd64.zip' -OutFile 'python-embed.zip' -UseBasicParsing"
+    powershell -Command "Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.13.3/python-3.13.3-embed-amd64.zip' -OutFile 'python-embed.zip'"
     if not exist "python-embed.zip" (
         echo.
         echo ERROR: Download failed. Check your internet connection.
@@ -46,7 +46,7 @@ echo Ready.
 
 :: ==================== KILL STALE PORT ====================
 if not defined PORT set PORT=8899
-for /f "tokens=5" %%p in ('netstat -ano ^| findstr ":%PORT% " ^| findstr "LISTENING" 2^>nul') do (
+for /f "delims=" %%p in ('powershell -Command "Get-NetTCPConnection -LocalPort %PORT% -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess" 2^>nul') do (
     taskkill /F /PID %%p >nul 2>&1
 )
 

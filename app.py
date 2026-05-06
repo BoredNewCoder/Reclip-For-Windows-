@@ -12,6 +12,7 @@ import time
 import re
 import webbrowser
 import imageio_ffmpeg
+import static_ffmpeg
 from html import unescape
 from flask import Flask, request, jsonify, send_file, render_template
 
@@ -23,17 +24,26 @@ else:
     RESOURCE_DIR = BASE_DIR
 
 app = Flask(__name__, template_folder=os.path.join(RESOURCE_DIR, "templates"))
+app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10MB max upload size
 DOWNLOAD_DIR = os.path.join(BASE_DIR, "downloads")
 JOBS_DIR = os.path.join(BASE_DIR, ".jobs")
 COOKIES_FILE = os.path.join(BASE_DIR, "cookies.txt")
 YTDLP = [sys.executable, "-m", "yt_dlp"]
-FFMPEG_PATH = imageio_ffmpeg.get_ffmpeg_exe()
+static_ffmpeg.add_paths()
+local_ffmpeg_dir = os.path.join(BASE_DIR, "ffmpeg")
+if os.path.isdir(local_ffmpeg_dir):
+    FFMPEG_DIR = local_ffmpeg_dir
+else:
+    _ffmpeg_bin = shutil.which("ffmpeg")
+    FFMPEG_DIR = os.path.dirname(_ffmpeg_bin) if _ffmpeg_bin else os.path.dirname(imageio_ffmpeg.get_ffmpeg_exe())
+
+os.environ['PATH'] = FFMPEG_DIR + os.pathsep + os.environ.get('PATH', '')
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 os.makedirs(JOBS_DIR, exist_ok=True)
 
 
 def base_cmd():
-    cmd = YTDLP + ["--no-playlist", "--ffmpeg-location", FFMPEG_PATH,
+    cmd = YTDLP + ["--no-playlist", "--ffmpeg-location", FFMPEG_DIR,
                    "--retries", "50", "--fragment-retries", "50", "--retry-sleep", "5"]
     if os.path.isfile(COOKIES_FILE):
         cmd += ["--cookies", COOKIES_FILE]
@@ -78,6 +88,8 @@ def delete_job_state(job_id):
 
 
 def run_download(job_id, url, format_choice, format_id, sponsorblock=False, resume=False):
+    if job_id not in jobs:
+        return
     job = jobs[job_id]
     out_template = os.path.join(DOWNLOAD_DIR, f"{job_id}.%(ext)s")
 
@@ -105,7 +117,10 @@ def run_download(job_id, url, format_choice, format_id, sponsorblock=False, resu
             job["proc"] = proc
 
         def _kill_on_timeout():
-            proc.kill()
+            try:
+                proc.kill()
+            except Exception:
+                pass
             with jobs_lock:
                 if job.get("status") == "downloading":
                     job["status"] = "error"
@@ -121,11 +136,21 @@ def run_download(job_id, url, format_choice, format_id, sponsorblock=False, resu
                 match = re.search(r'\[download\]\s+([\d.]+)%', line)
                 if match:
                     with jobs_lock:
-                        job["progress"] = float(match.group(1))
+                        if job.get("status") == "downloading":
+                            job["progress"] = float(match.group(1))
+        except Exception:
+            pass
         finally:
             timeout_timer.cancel()
 
-        returncode = proc.wait()
+        try:
+            returncode = proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+            returncode = -1
 
         with jobs_lock:
             if job.get("status") != "downloading":
@@ -186,8 +211,9 @@ def run_download(job_id, url, format_choice, format_id, sponsorblock=False, resu
             counter += 1
         if final_path != chosen:
             try:
-                shutil.move(chosen, final_path)
-                chosen = final_path
+                if os.path.exists(chosen):
+                    shutil.move(chosen, final_path)
+                    chosen = final_path
             except OSError:
                 pass
 
@@ -199,8 +225,9 @@ def run_download(job_id, url, format_choice, format_id, sponsorblock=False, resu
         delete_job_state(job_id)
     except Exception as e:
         with jobs_lock:
-            job["status"] = "error"
-            job["error"] = str(e)
+            if job.get("status") == "downloading":
+                job["status"] = "error"
+                job["error"] = str(e)
         delete_job_state(job_id)
 
 
@@ -297,7 +324,7 @@ def get_info():
             "formats": formats,
         })
     except subprocess.TimeoutExpired:
-        return jsonify({"error": "Timed out fetching video info"}), 400
+        return jsonify({"error": "Network timeout fetching video info. Check your connection and try again."}), 400
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
@@ -321,11 +348,27 @@ def start_download():
 
     cutoff = time.time() - 3600
     with jobs_lock:
-        for jid in [k for k, v in jobs.items() if v.get("created", 0) < cutoff]:
+        for jid in [k for k, v in jobs.items() if v.get("created", time.time()) < cutoff]:
             jobs.pop(jid, None)
 
-        job_id = uuid.uuid4().hex[:10]
-        jobs[job_id] = {"status": "downloading", "url": url, "title": title, "thumbnail": thumbnail, "uploader": uploader, "source": source, "duration": duration, "created": time.time(), "progress": 0, "format_choice": format_choice, "format_id": format_id, "sponsorblock": sponsorblock}
+        while True:
+            job_id = uuid.uuid4().hex[:16]
+            if job_id not in jobs:
+                break
+        jobs[job_id] = {
+            "status": "downloading",
+            "url": url,
+            "title": title,
+            "thumbnail": thumbnail,
+            "uploader": uploader,
+            "source": source,
+            "duration": duration,
+            "created": time.time(),
+            "progress": 0,
+            "format_choice": format_choice,
+            "format_id": format_id,
+            "sponsorblock": sponsorblock,
+        }
 
     save_job_state(job_id)
     thread = threading.Thread(target=run_download, args=(job_id, url, format_choice, format_id, sponsorblock))
@@ -337,10 +380,10 @@ def start_download():
 
 @app.route("/api/status/<job_id>")
 def check_status(job_id):
-    job = jobs.get(job_id)
-    if not job:
-        return jsonify({"error": "Job not found"}), 404
     with jobs_lock:
+        job = jobs.get(job_id)
+        if not job:
+            return jsonify({"error": "Job not found"}), 404
         return jsonify({
             "status": job["status"],
             "error": job.get("error"),
@@ -351,18 +394,21 @@ def check_status(job_id):
 
 @app.route("/api/file/<job_id>")
 def download_file(job_id):
-    job = jobs.get(job_id)
-    if not job or job["status"] != "done":
-        return jsonify({"error": "File not ready"}), 404
-    return send_file(job["file"], as_attachment=True, download_name=job["filename"])
+    with jobs_lock:
+        job = jobs.get(job_id)
+        if not job or job["status"] != "done":
+            return jsonify({"error": "File not ready"}), 404
+        file_path = job["file"]
+        filename = job["filename"]
+    return send_file(file_path, as_attachment=True, download_name=filename)
 
 
 @app.route("/api/pause/<job_id>", methods=["POST"])
 def pause_download(job_id):
-    job = jobs.get(job_id)
-    if not job:
-        return jsonify({"error": "Job not found"}), 404
     with jobs_lock:
+        job = jobs.get(job_id)
+        if not job:
+            return jsonify({"error": "Job not found"}), 404
         proc = job.get("proc")
         job["status"] = "paused"
     if proc:
@@ -376,10 +422,10 @@ def pause_download(job_id):
 
 @app.route("/api/resume/<job_id>", methods=["POST"])
 def resume_download(job_id):
-    job = jobs.get(job_id)
-    if not job:
-        return jsonify({"error": "Job not found"}), 404
     with jobs_lock:
+        job = jobs.get(job_id)
+        if not job:
+            return jsonify({"error": "Job not found"}), 404
         if job["status"] != "paused":
             return jsonify({"error": "Job is not paused"}), 400
         job["status"] = "downloading"
@@ -398,10 +444,10 @@ def resume_download(job_id):
 
 @app.route("/api/cancel/<job_id>", methods=["POST"])
 def cancel_download(job_id):
-    job = jobs.get(job_id)
-    if not job:
-        return jsonify({"error": "Job not found"}), 404
     with jobs_lock:
+        job = jobs.get(job_id)
+        if not job:
+            return jsonify({"error": "Job not found"}), 404
         proc = job.get("proc")
         job["status"] = "cancelled"
         job["error"] = "Cancelled"
@@ -541,6 +587,11 @@ def upload_cookies():
     f = request.files.get("file")
     if not f:
         return jsonify({"error": "No file provided"}), 400
+    f.seek(0, 2)
+    size = f.tell()
+    f.seek(0)
+    if size > 10 * 1024 * 1024:
+        return jsonify({"error": "File too large (max 10MB)"}), 400
     f.save(COOKIES_FILE)
     return jsonify({"ok": True})
 
@@ -556,5 +607,12 @@ if __name__ == "__main__":
     recover_jobs()
     port = int(os.environ.get("PORT", 8899))
     host = os.environ.get("HOST", "127.0.0.1")
-    threading.Timer(1.5, webbrowser.open, args=[f"http://localhost:{port}"]).start()
+
+    def open_browser():
+        try:
+            webbrowser.open(f"http://localhost:{port}")
+        except Exception:
+            pass
+
+    threading.Timer(1.5, open_browser).start()
     app.run(host=host, port=port)

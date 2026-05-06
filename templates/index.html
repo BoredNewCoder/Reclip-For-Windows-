@@ -793,7 +793,7 @@
       let qualityChips = '';
       if (!isAudio && c.formats && c.formats.length > 1) {
         qualityChips = c.formats.map(f =>
-          `<button class="q-chip${f.id === c.selectedFormatId ? ' active' : ''}" onclick="pickFormat(${idx}, '${f.id}')">${f.label}</button>`
+          `<button class="q-chip${f.id === c.selectedFormatId ? ' active' : ''}" data-card-idx="${idx}" data-format-id="${esc(f.id)}">${esc(f.label)}</button>`
         ).join('');
       }
 
@@ -848,6 +848,14 @@
       cardData[idx].selectedFormatId = formatId;
       renderCard(idx);
     }
+
+    document.getElementById('cards').addEventListener('click', e => {
+      if (e.target.classList.contains('q-chip')) {
+        const idx = parseInt(e.target.dataset.cardIdx);
+        const formatId = e.target.dataset.formatId;
+        if (!isNaN(idx)) pickFormat(idx, formatId);
+      }
+    });
 
     async function dlCard(idx) {
       const c = cardData[idx];
@@ -1018,10 +1026,18 @@
             ffBtn.onclick = importFromFirefox;
             panel.appendChild(ffBtn);
           }
+          const newInput = document.createElement('input');
+          newInput.type = 'file';
+          newInput.id = 'cookieUploadInput';
+          newInput.accept = '.txt';
+          newInput.style.display = 'none';
+          newInput.onchange = () => uploadCookieFile(newInput);
+          panel.appendChild(newInput);
+
           const uploadBtn = document.createElement('button');
           uploadBtn.className = 'cookie-btn';
           uploadBtn.textContent = 'Upload .txt';
-          uploadBtn.onclick = () => panel.querySelector('input[type=file]').click();
+          uploadBtn.onclick = () => newInput.click();
           panel.appendChild(uploadBtn);
 
           const extBtn = document.createElement('a');
@@ -1033,14 +1049,6 @@
           extBtn.style.textDecoration = 'none';
           panel.appendChild(extBtn);
         }
-
-        const newInput = document.createElement('input');
-        newInput.type = 'file';
-        newInput.id = 'cookieUploadInput';
-        newInput.accept = '.txt';
-        newInput.style.display = 'none';
-        newInput.onchange = () => uploadCookieFile(newInput);
-        panel.appendChild(newInput);
       } catch { /* silently ignore */ }
     }
 
