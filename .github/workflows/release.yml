@@ -21,7 +21,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install flask imageio-ffmpeg yt-dlp static-ffmpeg "curl-cffi>=0.10,<0.15" pyinstaller
+        run: pip install flask imageio-ffmpeg yt-dlp static-ffmpeg "curl-cffi" pyinstaller
 
       - name: Build exe
         run: >
