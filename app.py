@@ -42,11 +42,13 @@ os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 os.makedirs(JOBS_DIR, exist_ok=True)
 
 
-def base_cmd():
+def base_cmd(impersonate=False):
     cmd = YTDLP + ["--no-playlist", "--ffmpeg-location", FFMPEG_DIR,
                    "--retries", "50", "--fragment-retries", "50", "--retry-sleep", "5"]
     if os.path.isfile(COOKIES_FILE):
         cmd += ["--cookies", COOKIES_FILE]
+    if impersonate:
+        cmd += ["--impersonate", "chrome"]
     return cmd
 
 
@@ -70,6 +72,7 @@ def save_job_state(job_id):
         "format_choice": job.get("format_choice", "video"),
         "format_id": job.get("format_id"),
         "sponsorblock": job.get("sponsorblock", False),
+        "impersonate": job.get("impersonate", False),
         "progress": job.get("progress", 0),
         "created": job.get("created", time.time()),
     }
@@ -87,13 +90,13 @@ def delete_job_state(job_id):
         pass
 
 
-def run_download(job_id, url, format_choice, format_id, sponsorblock=False, resume=False):
+def run_download(job_id, url, format_choice, format_id, sponsorblock=False, resume=False, impersonate=False):
     if job_id not in jobs:
         return
     job = jobs[job_id]
     out_template = os.path.join(DOWNLOAD_DIR, f"{job_id}.%(ext)s")
 
-    cmd = base_cmd() + ["-o", out_template]
+    cmd = base_cmd(impersonate=impersonate) + ["-o", out_template]
 
     if resume:
         cmd += ["--continue"]
@@ -248,7 +251,8 @@ def get_info():
     if not url:
         return jsonify({"error": "No URL provided"}), 400
 
-    cmd = base_cmd() + ["-j", url]
+    impersonate = data.get("impersonate", False)
+    cmd = base_cmd(impersonate=impersonate) + ["-j", url]
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
         if result.returncode != 0:
@@ -336,6 +340,7 @@ def start_download():
     format_choice = data.get("format", "video")
     format_id = data.get("format_id")
     sponsorblock = data.get("sponsorblock", False)
+    impersonate = data.get("impersonate", False)
 
     title = data.get("title", "")
     thumbnail = data.get("thumbnail", "")
@@ -368,10 +373,11 @@ def start_download():
             "format_choice": format_choice,
             "format_id": format_id,
             "sponsorblock": sponsorblock,
+            "impersonate": impersonate,
         }
 
     save_job_state(job_id)
-    thread = threading.Thread(target=run_download, args=(job_id, url, format_choice, format_id, sponsorblock))
+    thread = threading.Thread(target=run_download, args=(job_id, url, format_choice, format_id, sponsorblock), kwargs={"impersonate": impersonate})
     thread.daemon = True
     thread.start()
 
@@ -434,9 +440,10 @@ def resume_download(job_id):
         format_choice = job["format_choice"]
         format_id = job["format_id"]
         sponsorblock = job["sponsorblock"]
+        impersonate = job.get("impersonate", False)
 
     save_job_state(job_id)
-    thread = threading.Thread(target=run_download, args=(job_id, url, format_choice, format_id, sponsorblock), kwargs={"resume": True})
+    thread = threading.Thread(target=run_download, args=(job_id, url, format_choice, format_id, sponsorblock), kwargs={"resume": True, "impersonate": impersonate})
     thread.daemon = True
     thread.start()
     return jsonify({"ok": True})
@@ -487,6 +494,7 @@ def recover_jobs():
                     "format_choice": state.get("format_choice", "video"),
                     "format_id": state.get("format_id"),
                     "sponsorblock": state.get("sponsorblock", False),
+                    "impersonate": state.get("impersonate", False),
                     "progress": state.get("progress", 0),
                     "created": state.get("created", time.time()),
                 }
@@ -495,10 +503,11 @@ def recover_jobs():
                 format_choice = state.get("format_choice", "video")
                 format_id = state.get("format_id")
                 sponsorblock = state.get("sponsorblock", False)
+                impersonate = state.get("impersonate", False)
                 thread = threading.Thread(
                     target=run_download,
                     args=(job_id, url, format_choice, format_id, sponsorblock),
-                    kwargs={"resume": True}
+                    kwargs={"resume": True, "impersonate": impersonate}
                 )
                 thread.daemon = True
                 thread.start()

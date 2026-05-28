@@ -562,6 +562,11 @@
         Remove Sponsors
       </label>
 
+      <label class="sponsor-toggle">
+        <input type="checkbox" id="impersonate">
+        Bypass Detection
+      </label>
+
       <button class="fetch-btn" id="goBtn" onclick="go()">Fetch</button>
 
       <button class="cookie-badge" id="cookieBadge" onclick="toggleCookiePanel()" title="Cookie settings">
@@ -689,6 +694,7 @@
       if (!urls.length) return;
 
       const sponsorblock = document.getElementById('sponsorblock').checked;
+      const impersonate = document.getElementById('impersonate').checked;
 
       const btn = document.getElementById('goBtn');
       const container = document.getElementById('cards');
@@ -707,7 +713,7 @@
           const res = await fetch('/api/info', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url }),
+            body: JSON.stringify({ url, impersonate }),
           });
           const data = await res.json();
           if (data.error) {
@@ -864,6 +870,7 @@
       renderCard(idx);
 
       const sponsorblock = document.getElementById('sponsorblock').checked;
+      const impersonate = document.getElementById('impersonate').checked;
 
       try {
         const res = await fetch('/api/download', {
@@ -878,7 +885,8 @@
             uploader: c.uploader || '',
             source: c.source || '',
             duration: c.duration || null,
-            sponsorblock: sponsorblock
+            sponsorblock: sponsorblock,
+            impersonate: impersonate
           }),
         });
         const data = await res.json();

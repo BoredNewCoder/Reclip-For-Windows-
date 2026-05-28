@@ -35,6 +35,7 @@ Downloads are saved to the `downloads\` folder inside the ReClip directory.
 ## Features
 
 - **Remove Sponsors** — automatically skips sponsor segments via SponsorBlock (YouTube)
+- **Bypass Detection** — uses [curl-cffi](https://github.com/lexiforest/curl-cffi) to impersonate Chrome's TLS fingerprint, bypassing bot detection on sites like YouTube that block standard download tools
 - **Dark mode** — click the sun/moon icon top-right; respects OS setting, persists across sessions
 - **Pause & Resume** — pause any active download and resume it later; progress is preserved
 - **Cancel downloads** — stop any in-progress or paused download and discard the partial file
