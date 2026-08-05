@@ -78,3 +78,10 @@ set PORT=9000 && reclip.bat
 ## License
 
 MIT — see [LICENSE](LICENSE). Provided as-is, no warranty. You are responsible for your own use.
+
+
+## Support
+
+If this saved you time or you just want to say thanks:
+
+**Cash App:** [$CVanZetta](https://cash.app/$CVanZetta)
