@@ -385,6 +385,39 @@
     .clip-row input:focus { border-color: var(--accent); }
     .clip-row input.bad { border-color: var(--error); }
 
+    .codec-select {
+      padding: 8px 10px;
+      border: 1.5px solid var(--card-border);
+      border-radius: 10px;
+      background: var(--card);
+      color: var(--muted);
+      font-family: 'DM Mono', monospace;
+      font-size: 0.72rem;
+      cursor: pointer;
+      outline: none;
+    }
+    .codec-select:focus { border-color: var(--accent); }
+
+    .ytdlp-ver {
+      width: 100%;
+      text-align: center;
+      margin-top: 14px;
+      font-size: 0.6rem;
+      color: var(--muted);
+      letter-spacing: 0.04em;
+    }
+    .ytdlp-ver button {
+      background: none;
+      border: none;
+      color: var(--accent);
+      font-family: 'DM Mono', monospace;
+      font-size: 0.6rem;
+      cursor: pointer;
+      letter-spacing: 0.04em;
+      padding: 0;
+    }
+    .ytdlp-ver button:disabled { color: var(--muted); cursor: default; }
+
     .card.card-error {
       border-color: rgba(196, 61, 61, 0.2);
       background: rgba(196, 61, 61, 0.03);
@@ -593,6 +626,18 @@
         Bypass Detection
       </label>
 
+      <label class="sponsor-toggle" id="subsToggleLabel">
+        <input type="checkbox" id="subtitles">
+        Subtitles (EN)
+      </label>
+
+      <select id="codecPref" class="codec-select" title="Preferred video codec (best quality in that codec)">
+        <option value="auto">Codec: Auto</option>
+        <option value="h264">H.264 (compatible)</option>
+        <option value="av1">AV1 (smaller)</option>
+        <option value="vp9">VP9</option>
+      </select>
+
       <button class="fetch-btn" id="goBtn" onclick="go()">Fetch</button>
 
       <button class="cookie-badge" id="cookieBadge" onclick="toggleCookiePanel()" title="Cookie settings">
@@ -634,6 +679,8 @@
       <a class="platform-chip" href="https://www.linkedin.com" target="_blank" rel="noopener noreferrer">LinkedIn</a>
       <a class="platform-chip" href="https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md" target="_blank" rel="noopener noreferrer">1000+ more</a>
     </div>
+
+    <div class="ytdlp-ver" id="ytdlpVer"></div>
   </div>
 
   <script>
@@ -822,11 +869,18 @@
         thumbHtml = `<div class="no-thumb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2"/><circle cx="8" cy="8" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></div>`;
       }
 
+      const codecPref = document.getElementById('codecPref')?.value || 'auto';
       let qualityChips = '';
       if (!isAudio && c.formats && c.formats.length > 1) {
-        qualityChips = c.formats.map(f =>
-          `<button class="q-chip${f.id === c.selectedFormatId ? ' active' : ''}" data-card-idx="${idx}" data-format-id="${esc(f.id)}">${esc(f.label)}</button>`
-        ).join('');
+        if (codecPref !== 'auto') {
+          // Codec preference works on the "best available" path only — an explicit
+          // quality pick already names the stream. So dim the chips while it's active.
+          qualityChips = `<span class="q-chip" style="opacity:.5;pointer-events:none;border-style:dashed">best ${codecPref.toUpperCase()}</span>`;
+        } else {
+          qualityChips = c.formats.map(f =>
+            `<button class="q-chip${f.id === c.selectedFormatId ? ' active' : ''}" data-card-idx="${idx}" data-format-id="${esc(f.id)}">${esc(f.label)}</button>`
+          ).join('');
+        }
       }
 
       const clipRow = `
@@ -921,6 +975,11 @@
 
       const sponsorblock = document.getElementById('sponsorblock').checked;
       const impersonate = document.getElementById('impersonate').checked;
+      const subtitles = document.getElementById('subtitles').checked;
+      const codec = document.getElementById('codecPref').value;
+      // Codec preference only applies on the "best available" path, so drop the explicit
+      // quality pick when it's set.
+      const formatId = (codec && codec !== 'auto') ? null : c.selectedFormatId;
 
       try {
         const res = await fetch('/api/download', {
@@ -929,7 +988,7 @@
           body: JSON.stringify({
             url: c.url,
             format: currentFormat,
-            format_id: c.selectedFormatId,
+            format_id: formatId,
             title: c.title || '',
             thumbnail: c.thumbnail || '',
             uploader: c.uploader || '',
@@ -938,7 +997,9 @@
             sponsorblock: sponsorblock,
             impersonate: impersonate,
             clip_start: (c.clipStart || '').trim(),
-            clip_end: (c.clipEnd || '').trim()
+            clip_end: (c.clipEnd || '').trim(),
+            subtitles: subtitles,
+            codec: codec
           }),
         });
         const data = await res.json();
@@ -1183,9 +1244,46 @@
       } catch {}
     }
 
+    // Re-dim/undim the quality chips when the codec preference changes.
+    document.getElementById('codecPref').addEventListener('change', () => {
+      cardData.forEach((c, i) => { if (c.status === 'ready') renderCard(i); });
+    });
+
+    // yt-dlp version + in-app update
+    async function loadYtdlpVersion() {
+      const box = document.getElementById('ytdlpVer');
+      try {
+        const res = await fetch('/api/version');
+        const data = await res.json();
+        if (!data.yt_dlp) { box.textContent = ''; return; }
+        box.innerHTML = `yt-dlp ${esc(data.yt_dlp)} · <button id="ytdlpUpdate">update now</button>`;
+        document.getElementById('ytdlpUpdate').onclick = updateYtdlp;
+      } catch { box.textContent = ''; }
+    }
+
+    async function updateYtdlp() {
+      const btn = document.getElementById('ytdlpUpdate');
+      if (!btn) return;
+      btn.disabled = true;
+      btn.textContent = 'updating…';
+      try {
+        const res = await fetch('/api/update-ytdlp', { method: 'POST' });
+        const data = await res.json();
+        const box = document.getElementById('ytdlpVer');
+        if (data.error) {
+          box.innerHTML = `yt-dlp update failed — ${esc(data.error)}`;
+        } else {
+          box.innerHTML = `yt-dlp ${esc(data.yt_dlp || '')} · updated ✓`;
+        }
+      } catch {
+        document.getElementById('ytdlpVer').textContent = 'yt-dlp update failed — network error';
+      }
+    }
+
     // Initialize
     loadCookieStatus();
     loadActiveJobs();
+    loadYtdlpVersion();
   </script>
 </body>
 </html>

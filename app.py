@@ -119,6 +119,8 @@ def save_job_state(job_id):
         "impersonate": job.get("impersonate", False),
         "clip_start": job.get("clip_start"),
         "clip_end": job.get("clip_end"),
+        "subtitles": job.get("subtitles", False),
+        "codec": job.get("codec"),
         "progress": job.get("progress", 0),
         "created": job.get("created", time.time()),
     }
@@ -136,8 +138,11 @@ def delete_job_state(job_id):
         pass
 
 
+_CODEC_SORT = {"h264": "vcodec:h264", "av1": "vcodec:av01", "vp9": "vcodec:vp09"}
+
+
 def run_download(job_id, url, format_choice, format_id, sponsorblock=False, resume=False,
-                 impersonate=False, clip_start=None, clip_end=None):
+                 impersonate=False, clip_start=None, clip_end=None, subtitles=False, codec=None):
     if job_id not in jobs:
         return
     job = jobs[job_id]
@@ -159,12 +164,27 @@ def run_download(job_id, url, format_choice, format_id, sponsorblock=False, resu
     if section:
         cmd += ["--download-sections", section, "--force-keyframes-at-cuts"]
 
+    # Subtitles (English): write a .srt sidecar always; also embed into the mp4 for video.
+    # --write-auto-subs picks up YouTube's auto-captions when there's no human track.
+    # Explicit lang list, NOT "en.*" — the wildcard also matches YouTube's dozens of
+    # auto-translated "en-<lang>" tracks and hammers the sub endpoint into a 429.
+    if subtitles:
+        cmd += ["--write-subs", "--write-auto-subs",
+                "--sub-langs", "en,en-US,en-GB,en-orig",
+                "--convert-subs", "srt"]
+        if format_choice != "audio":
+            cmd += ["--embed-subs"]
+
     if format_choice == "audio":
         cmd += ["-x", "--audio-format", "mp3"]
     elif format_id:
         cmd += ["-f", f"{format_id}+bestaudio/best", "--merge-output-format", "mp4"]
     else:
         cmd += ["-f", "bestvideo+bestaudio/best", "--merge-output-format", "mp4"]
+        # Codec preference only bites on this "best" path — an explicit format_id already
+        # named the video stream. -S just re-orders the candidates; missing codec = next best.
+        if codec in _CODEC_SORT:
+            cmd += ["-S", _CODEC_SORT[codec]]
 
     cmd.append(url)
 
@@ -238,7 +258,10 @@ def run_download(job_id, url, format_choice, format_id, sponsorblock=False, resu
             delete_job_state(job_id)
             return
 
-        files = glob.glob(os.path.join(DOWNLOAD_DIR, f"{job_id}.*"))
+        all_files = glob.glob(os.path.join(DOWNLOAD_DIR, f"{job_id}.*"))
+        sub_exts = (".srt", ".vtt", ".ass", ".ssa")
+        sub_files = [f for f in all_files if f.lower().endswith(sub_exts)]
+        files = [f for f in all_files if f not in sub_files]
         if not files:
             with jobs_lock:
                 job["status"] = "error"
@@ -294,6 +317,22 @@ def run_download(job_id, url, format_choice, format_id, sponsorblock=False, resu
                 if os.path.exists(chosen):
                     shutil.move(chosen, final_path)
                     chosen = final_path
+            except OSError:
+                pass
+
+        # Rename subtitle sidecars to sit next to the final file: "{job_id}.en.srt" -> "{stem}.en.srt".
+        final_stem = os.path.splitext(chosen)[0]
+        for sub in sub_files:
+            tail = os.path.basename(sub)[len(job_id):]  # ".en.srt"
+            sub_dest = final_stem + tail
+            if sub_dest == sub:
+                continue
+            n = 1
+            while os.path.exists(sub_dest):
+                sub_dest = f"{final_stem} ({n}){tail}"
+                n += 1
+            try:
+                shutil.move(sub, sub_dest)
             except OSError:
                 pass
 
@@ -441,6 +480,9 @@ def start_download():
     if clip_start is not None and clip_end is not None and clip_end <= clip_start:
         return jsonify({"error": "Clip end must be after the start."}), 400
 
+    subtitles = bool(data.get("subtitles", False))
+    codec = data.get("codec") if data.get("codec") in _CODEC_SORT else None
+
     cutoff = time.time() - 3600
     with jobs_lock:
         for jid in [k for k, v in jobs.items() if v.get("created", time.time()) < cutoff]:
@@ -466,11 +508,14 @@ def start_download():
             "impersonate": impersonate,
             "clip_start": clip_start,
             "clip_end": clip_end,
+            "subtitles": subtitles,
+            "codec": codec,
         }
 
     save_job_state(job_id)
     thread = threading.Thread(target=run_download, args=(job_id, url, format_choice, format_id, sponsorblock),
-                             kwargs={"impersonate": impersonate, "clip_start": clip_start, "clip_end": clip_end})
+                             kwargs={"impersonate": impersonate, "clip_start": clip_start, "clip_end": clip_end,
+                                     "subtitles": subtitles, "codec": codec})
     thread.daemon = True
     thread.start()
 
@@ -537,11 +582,14 @@ def resume_download(job_id):
         impersonate = job.get("impersonate", False)
         clip_start = job.get("clip_start")
         clip_end = job.get("clip_end")
+        subtitles = job.get("subtitles", False)
+        codec = job.get("codec")
 
     save_job_state(job_id)
     thread = threading.Thread(target=run_download, args=(job_id, url, format_choice, format_id, sponsorblock),
                              kwargs={"resume": True, "impersonate": impersonate,
-                                     "clip_start": clip_start, "clip_end": clip_end})
+                                     "clip_start": clip_start, "clip_end": clip_end,
+                                     "subtitles": subtitles, "codec": codec})
     thread.daemon = True
     thread.start()
     return jsonify({"ok": True})
@@ -595,6 +643,8 @@ def recover_jobs():
                     "impersonate": state.get("impersonate", False),
                     "clip_start": state.get("clip_start"),
                     "clip_end": state.get("clip_end"),
+                    "subtitles": state.get("subtitles", False),
+                    "codec": state.get("codec"),
                     "progress": state.get("progress", 0),
                     "created": state.get("created", time.time()),
                 }
@@ -608,7 +658,8 @@ def recover_jobs():
                     target=run_download,
                     args=(job_id, url, format_choice, format_id, sponsorblock),
                     kwargs={"resume": True, "impersonate": impersonate,
-                            "clip_start": state.get("clip_start"), "clip_end": state.get("clip_end")}
+                            "clip_start": state.get("clip_start"), "clip_end": state.get("clip_end"),
+                            "subtitles": state.get("subtitles", False), "codec": state.get("codec")}
                 )
                 thread.daemon = True
                 thread.start()
@@ -712,6 +763,33 @@ def clear_cookies():
     if os.path.isfile(COOKIES_FILE):
         os.remove(COOKIES_FILE)
     return jsonify({"ok": True})
+
+
+def _ytdlp_version():
+    try:
+        r = subprocess.run(YTDLP + ["--version"], capture_output=True, text=True, timeout=20)
+        return r.stdout.strip() or None
+    except Exception:
+        return None
+
+
+@app.route("/api/version")
+def api_version():
+    return jsonify({"yt_dlp": _ytdlp_version()})
+
+
+@app.route("/api/update-ytdlp", methods=["POST"])
+def update_ytdlp():
+    if getattr(sys, "frozen", False):
+        return jsonify({"error": "The packaged .exe bundles yt-dlp — grab a newer ReClip release instead."}), 400
+    try:
+        r = subprocess.run([sys.executable, "-m", "pip", "install", "-U", "--quiet", "yt-dlp"],
+                           capture_output=True, text=True, timeout=180)
+    except subprocess.TimeoutExpired:
+        return jsonify({"error": "Update timed out."}), 500
+    if r.returncode != 0:
+        return jsonify({"error": (r.stderr or r.stdout or "pip failed").strip()[-200:]}), 500
+    return jsonify({"ok": True, "yt_dlp": _ytdlp_version()})
 
 
 if __name__ == "__main__":
