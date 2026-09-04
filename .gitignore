@@ -1,0 +1,17 @@
+venv/
+python/
+downloads/
+cookies.txt
+__pycache__/
+*.pyc
+.env
+.claude/
+.ijfw/
+ijfw/
+.jobs/
+ffmpeg/
+build/
+dist/
+*.spec
+python-embed.zip
+get-pip.py

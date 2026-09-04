@@ -23,14 +23,13 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install flask imageio-ffmpeg yt-dlp static-ffmpeg "curl-cffi" pyinstaller
+        run: pip install -r requirements.txt pyinstaller
 
       - name: Build exe
         run: >
           pyinstaller --onefile --name reclip
           --add-data "templates;templates"
           --collect-all yt_dlp
-          --collect-all imageio_ffmpeg
           --collect-all static_ffmpeg
           app.py
 

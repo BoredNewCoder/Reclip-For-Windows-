@@ -359,6 +359,32 @@
     }
     .q-chip:hover:not(.active) { border-color: var(--muted); }
 
+    .clip-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 8px;
+      flex-wrap: wrap;
+      font-size: 0.62rem;
+      color: var(--muted);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .clip-row input {
+      width: 68px;
+      padding: 4px 8px;
+      border: 1.5px solid var(--card-border);
+      border-radius: 6px;
+      background: var(--card);
+      color: var(--fg);
+      font-family: 'DM Mono', monospace;
+      font-size: 0.68rem;
+      outline: none;
+      text-transform: none;
+    }
+    .clip-row input:focus { border-color: var(--accent); }
+    .clip-row input.bad { border-color: var(--error); }
+
     .card.card-error {
       border-color: rgba(196, 61, 61, 0.2);
       background: rgba(196, 61, 61, 0.03);
@@ -803,16 +829,29 @@
         ).join('');
       }
 
+      const clipRow = `
+        <div class="clip-row">
+          <span>Clip</span>
+          <input class="clip-start" data-card-idx="${idx}" placeholder="start" value="${esc(c.clipStart || '')}" aria-label="Clip start time">
+          <span>&rarr;</span>
+          <input class="clip-end" data-card-idx="${idx}" placeholder="end" value="${esc(c.clipEnd || '')}" aria-label="Clip end time">
+          <span style="text-transform:none;letter-spacing:0">mm:ss — optional</span>
+        </div>`;
+
       let actionHtml = '';
       if (c.status === 'ready') {
-        actionHtml = `<button class="card-dl-btn" onclick="dlCard(${idx})">Download</button>${qualityChips}`;
+        actionHtml = `<button class="card-dl-btn" onclick="dlCard(${idx})">Download</button>${qualityChips}${clipRow}`;
       } else if (c.status === 'downloading') {
         const progress = c.progress || 0;
+        const phaseLabel = c.phase === 'queued' ? 'Queued'
+          : c.phase === 'processing' ? 'Processing'
+          : `${progress.toFixed(0)}%`;
+        const indeterminate = c.phase === 'queued' || c.phase === 'processing';
         actionHtml = `
           <button class="card-dl-btn" onclick="pauseCard(${idx})" style="background:var(--muted);color:var(--bg)">Pause</button>
           <button class="card-dl-btn" onclick="cancelCard(${idx})" style="background:transparent;color:var(--muted);border:1.5px solid var(--card-border)">Cancel</button>
-          <span class="card-status downloading"><span class="spin"></span> ${progress.toFixed(0)}%</span>
-          <progress value="${progress}" max="100" style="width:100%;height:4px;border:none;border-radius:2px;margin-top:6px;accent-color:var(--accent)"></progress>
+          <span class="card-status downloading"><span class="spin"></span> ${phaseLabel}</span>
+          <progress ${indeterminate ? '' : `value="${progress}"`} max="100" style="width:100%;height:4px;border:none;border-radius:2px;margin-top:6px;accent-color:var(--accent)"></progress>
         `;
       } else if (c.status === 'paused') {
         const progress = c.progress || 0;
@@ -863,6 +902,17 @@
       }
     });
 
+    const TIMECODE_RE = /^(\d{1,2}:)?([0-5]?\d:)?[0-5]?\d(\.\d+)?$|^\d+(\.\d+)?$/;
+    document.getElementById('cards').addEventListener('input', e => {
+      if (!e.target.classList.contains('clip-start') && !e.target.classList.contains('clip-end')) return;
+      const idx = parseInt(e.target.dataset.cardIdx);
+      if (isNaN(idx) || !cardData[idx]) return;
+      const v = e.target.value.trim();
+      e.target.classList.toggle('bad', v !== '' && !TIMECODE_RE.test(v));
+      if (e.target.classList.contains('clip-start')) cardData[idx].clipStart = v;
+      else cardData[idx].clipEnd = v;
+    });
+
     async function dlCard(idx) {
       const c = cardData[idx];
       c.status = 'downloading';
@@ -886,7 +936,9 @@
             source: c.source || '',
             duration: c.duration || null,
             sponsorblock: sponsorblock,
-            impersonate: impersonate
+            impersonate: impersonate,
+            clip_start: (c.clipStart || '').trim(),
+            clip_end: (c.clipEnd || '').trim()
           }),
         });
         const data = await res.json();
@@ -937,6 +989,7 @@
             renderCard(idx);
           } else if (data.status === 'downloading') {
             c.progress = data.progress || 0;
+            c.phase = data.phase || null;
             renderCard(idx);
           }
         } catch {
@@ -1120,6 +1173,7 @@
             source: job.source || '',
             duration: job.duration || null,
             progress: job.progress || 0,
+            phase: job.phase || null,
           });
           renderCard(idx);
           if (job.status === 'downloading') {

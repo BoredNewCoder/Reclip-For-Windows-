@@ -11,7 +11,6 @@ import threading
 import time
 import re
 import webbrowser
-import imageio_ffmpeg
 import static_ffmpeg
 from html import unescape
 from flask import Flask, request, jsonify, send_file, render_template
@@ -29,27 +28,72 @@ DOWNLOAD_DIR = os.path.join(BASE_DIR, "downloads")
 JOBS_DIR = os.path.join(BASE_DIR, ".jobs")
 COOKIES_FILE = os.path.join(BASE_DIR, "cookies.txt")
 YTDLP = [sys.executable, "-m", "yt_dlp"]
+
+# ffmpeg + ffprobe. static-ffmpeg downloads both on first add_paths() and puts them
+# on PATH; a bundled ffmpeg\ dir next to the app wins if present. (ffprobe matters —
+# SponsorBlock needs it, which is why imageio-ffmpeg, ffmpeg-only, was dropped.)
 static_ffmpeg.add_paths()
 local_ffmpeg_dir = os.path.join(BASE_DIR, "ffmpeg")
 if os.path.isdir(local_ffmpeg_dir):
     FFMPEG_DIR = local_ffmpeg_dir
 else:
     _ffmpeg_bin = shutil.which("ffmpeg")
-    FFMPEG_DIR = os.path.dirname(_ffmpeg_bin) if _ffmpeg_bin else os.path.dirname(imageio_ffmpeg.get_ffmpeg_exe())
+    FFMPEG_DIR = os.path.dirname(_ffmpeg_bin) if _ffmpeg_bin else ""
 
-os.environ['PATH'] = FFMPEG_DIR + os.pathsep + os.environ.get('PATH', '')
+if FFMPEG_DIR:
+    os.environ['PATH'] = FFMPEG_DIR + os.pathsep + os.environ.get('PATH', '')
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 os.makedirs(JOBS_DIR, exist_ok=True)
 
+# Cap on how many downloads actually run at once. "Download All" still queues every
+# item immediately, but only this many hit the network — keeps 20 links from
+# spawning 20 yt-dlp+ffmpeg processes and tripping rate limits / bot detection.
+MAX_CONCURRENT = max(1, int(os.environ.get("MAX_CONCURRENT", "3")))
+_download_sem = threading.BoundedSemaphore(MAX_CONCURRENT)
+
+# Windows can't create a file named after a reserved device, even with an extension.
+_WIN_RESERVED = {"CON", "PRN", "AUX", "NUL"} \
+    | {f"COM{i}" for i in range(1, 10)} | {f"LPT{i}" for i in range(1, 10)}
+
 
 def base_cmd(impersonate=False):
-    cmd = YTDLP + ["--no-playlist", "--ffmpeg-location", FFMPEG_DIR,
+    cmd = YTDLP + ["--no-playlist",
                    "--retries", "50", "--fragment-retries", "50", "--retry-sleep", "5"]
+    if FFMPEG_DIR:
+        cmd += ["--ffmpeg-location", FFMPEG_DIR]
     if os.path.isfile(COOKIES_FILE):
         cmd += ["--cookies", COOKIES_FILE]
     if impersonate:
         cmd += ["--impersonate", "chrome"]
     return cmd
+
+
+# yt-dlp --download-sections wants "*START-END" with times as SS, MM:SS, HH:MM:SS, or "inf".
+def parse_timecode(v):
+    """'' / None -> None. '90' / '1:30' / '01:02:03' -> seconds (float). Raises ValueError."""
+    if v is None:
+        return None
+    s = str(v).strip()
+    if not s:
+        return None
+    parts = s.split(":")
+    if len(parts) > 3 or not all(p.strip() != "" for p in parts):
+        raise ValueError(f"bad timecode: {v!r}")
+    total = 0.0
+    for p in parts:
+        total = total * 60 + float(p)
+    if total < 0:
+        raise ValueError("timecode cannot be negative")
+    return total
+
+
+def clip_section_arg(start_sec, end_sec):
+    """Returns the '*START-END' string for --download-sections, or None if no clip."""
+    if start_sec is None and end_sec is None:
+        return None
+    s = start_sec if start_sec is not None else 0.0
+    e = end_sec if end_sec is not None else None
+    return f"*{s:g}-{e:g}" if e is not None else f"*{s:g}-inf"
 
 
 jobs = {}
@@ -73,6 +117,8 @@ def save_job_state(job_id):
         "format_id": job.get("format_id"),
         "sponsorblock": job.get("sponsorblock", False),
         "impersonate": job.get("impersonate", False),
+        "clip_start": job.get("clip_start"),
+        "clip_end": job.get("clip_end"),
         "progress": job.get("progress", 0),
         "created": job.get("created", time.time()),
     }
@@ -90,7 +136,8 @@ def delete_job_state(job_id):
         pass
 
 
-def run_download(job_id, url, format_choice, format_id, sponsorblock=False, resume=False, impersonate=False):
+def run_download(job_id, url, format_choice, format_id, sponsorblock=False, resume=False,
+                 impersonate=False, clip_start=None, clip_end=None):
     if job_id not in jobs:
         return
     job = jobs[job_id]
@@ -101,9 +148,16 @@ def run_download(job_id, url, format_choice, format_id, sponsorblock=False, resu
     if resume:
         cmd += ["--continue"]
 
-    # SponsorBlock - using "mark" because "remove" has timestamp bugs
+    # SponsorBlock: cut the sponsor segments out of the file entirely (needs ffmpeg re-mux).
     if sponsorblock:
         cmd += ["--sponsorblock-remove", "sponsor"]
+
+    # Clip: download only the requested slice. --force-keyframes-at-cuts makes the
+    # boundaries frame-accurate (a re-encode of the edge GOPs) instead of snapping to
+    # the nearest keyframe.
+    section = clip_section_arg(clip_start, clip_end)
+    if section:
+        cmd += ["--download-sections", section, "--force-keyframes-at-cuts"]
 
     if format_choice == "audio":
         cmd += ["-x", "--audio-format", "mp3"]
@@ -114,7 +168,19 @@ def run_download(job_id, url, format_choice, format_id, sponsorblock=False, resu
 
     cmd.append(url)
 
+    # Wait for a concurrency slot. The job shows as "queued" while it blocks here.
+    with jobs_lock:
+        if job.get("status") != "downloading":
+            return
+        job["phase"] = "queued"
+    _download_sem.acquire()
+    sem_held = True
     try:
+        with jobs_lock:
+            if job.get("status") != "downloading":
+                return
+            job["phase"] = None
+
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
         with jobs_lock:
             job["proc"] = proc
@@ -133,6 +199,7 @@ def run_download(job_id, url, format_choice, format_id, sponsorblock=False, resu
         timeout_timer.start()
 
         last_error = ""
+        _pp_re = re.compile(r'\[(Merger|ExtractAudio|SponsorBlock|VideoRemuxer|VideoConvertor|Fixup\w*|Metadata|EmbedSubtitle|SplitChapters)\]')
         try:
             for line in proc.stdout:
                 last_error = line.strip()
@@ -141,6 +208,11 @@ def run_download(job_id, url, format_choice, format_id, sponsorblock=False, resu
                     with jobs_lock:
                         if job.get("status") == "downloading":
                             job["progress"] = float(match.group(1))
+                            job["phase"] = None
+                elif _pp_re.search(line):
+                    with jobs_lock:
+                        if job.get("status") == "downloading":
+                            job["phase"] = "processing"
         except Exception:
             pass
         finally:
@@ -190,11 +262,16 @@ def run_download(job_id, url, format_choice, format_id, sponsorblock=False, resu
         ext = os.path.splitext(chosen)[1]
 
         def sanitize(s):
-            return "".join(ch for ch in s if ch not in r'\/:*?"<>|').strip()
+            s = "".join(ch for ch in s if ch not in r'\/:*?"<>|' and ord(ch) >= 32)
+            s = s.strip().strip(".").strip()
+            if s.upper() in _WIN_RESERVED or s.split(".")[0].upper() in _WIN_RESERVED:
+                s = "_" + s
+            return s
 
         title = sanitize(job.get("title", ""))
         uploader = sanitize(job.get("uploader", ""))
         source = sanitize(job.get("source", ""))
+        clip_tag = " [clip]" if section else ""
 
         if title:
             parts = [title[:100]]
@@ -202,9 +279,9 @@ def run_download(job_id, url, format_choice, format_id, sponsorblock=False, resu
                 parts.append(uploader[:50])
             if source:
                 parts.append(source[:30])
-            final_name = " - ".join(parts) + ext
+            final_name = " - ".join(parts) + clip_tag + ext
         else:
-            final_name = os.path.basename(chosen)
+            final_name = os.path.splitext(os.path.basename(chosen))[0] + clip_tag + ext
 
         stem, suffix = os.path.splitext(final_name)
         final_path = os.path.join(DOWNLOAD_DIR, final_name)
@@ -223,6 +300,7 @@ def run_download(job_id, url, format_choice, format_id, sponsorblock=False, resu
         with jobs_lock:
             job["status"] = "done"
             job["progress"] = 100
+            job["phase"] = None
             job["file"] = chosen
             job["filename"] = os.path.basename(chosen)
         delete_job_state(job_id)
@@ -232,6 +310,9 @@ def run_download(job_id, url, format_choice, format_id, sponsorblock=False, resu
                 job["status"] = "error"
                 job["error"] = str(e)
         delete_job_state(job_id)
+    finally:
+        if sem_held:
+            _download_sem.release()
 
 
 @app.route("/favicon.svg")
@@ -288,11 +369,12 @@ def get_info():
         def format_filesize(bytes_val):
             if not bytes_val:
                 return None
+            size = float(bytes_val)
             for unit in ['B', 'KB', 'MB', 'GB']:
-                if bytes_val < 1024:
-                    return f"{bytes_val:.1f}{unit}".replace('.0', '')
-                bytes_val /= 1024
-            return f"{bytes_val:.1f}TB"
+                if size < 1024:
+                    return f"{size:.1f}".rstrip('0').rstrip('.') + unit
+                size /= 1024
+            return f"{size:.1f}".rstrip('0').rstrip('.') + "TB"
 
         formats = []
         for height, f in best_by_height.items():
@@ -351,6 +433,14 @@ def start_download():
     if not url:
         return jsonify({"error": "No URL provided"}), 400
 
+    try:
+        clip_start = parse_timecode(data.get("clip_start"))
+        clip_end = parse_timecode(data.get("clip_end"))
+    except ValueError:
+        return jsonify({"error": "Clip times must look like 90, 1:30, or 01:02:03."}), 400
+    if clip_start is not None and clip_end is not None and clip_end <= clip_start:
+        return jsonify({"error": "Clip end must be after the start."}), 400
+
     cutoff = time.time() - 3600
     with jobs_lock:
         for jid in [k for k, v in jobs.items() if v.get("created", time.time()) < cutoff]:
@@ -374,10 +464,13 @@ def start_download():
             "format_id": format_id,
             "sponsorblock": sponsorblock,
             "impersonate": impersonate,
+            "clip_start": clip_start,
+            "clip_end": clip_end,
         }
 
     save_job_state(job_id)
-    thread = threading.Thread(target=run_download, args=(job_id, url, format_choice, format_id, sponsorblock), kwargs={"impersonate": impersonate})
+    thread = threading.Thread(target=run_download, args=(job_id, url, format_choice, format_id, sponsorblock),
+                             kwargs={"impersonate": impersonate, "clip_start": clip_start, "clip_end": clip_end})
     thread.daemon = True
     thread.start()
 
@@ -395,6 +488,7 @@ def check_status(job_id):
             "error": job.get("error"),
             "filename": job.get("filename"),
             "progress": job.get("progress", 0),
+            "phase": job.get("phase"),
         })
 
 
@@ -441,9 +535,13 @@ def resume_download(job_id):
         format_id = job["format_id"]
         sponsorblock = job["sponsorblock"]
         impersonate = job.get("impersonate", False)
+        clip_start = job.get("clip_start")
+        clip_end = job.get("clip_end")
 
     save_job_state(job_id)
-    thread = threading.Thread(target=run_download, args=(job_id, url, format_choice, format_id, sponsorblock), kwargs={"resume": True, "impersonate": impersonate})
+    thread = threading.Thread(target=run_download, args=(job_id, url, format_choice, format_id, sponsorblock),
+                             kwargs={"resume": True, "impersonate": impersonate,
+                                     "clip_start": clip_start, "clip_end": clip_end})
     thread.daemon = True
     thread.start()
     return jsonify({"ok": True})
@@ -495,6 +593,8 @@ def recover_jobs():
                     "format_id": state.get("format_id"),
                     "sponsorblock": state.get("sponsorblock", False),
                     "impersonate": state.get("impersonate", False),
+                    "clip_start": state.get("clip_start"),
+                    "clip_end": state.get("clip_end"),
                     "progress": state.get("progress", 0),
                     "created": state.get("created", time.time()),
                 }
@@ -507,7 +607,8 @@ def recover_jobs():
                 thread = threading.Thread(
                     target=run_download,
                     args=(job_id, url, format_choice, format_id, sponsorblock),
-                    kwargs={"resume": True, "impersonate": impersonate}
+                    kwargs={"resume": True, "impersonate": impersonate,
+                            "clip_start": state.get("clip_start"), "clip_end": state.get("clip_end")}
                 )
                 thread.daemon = True
                 thread.start()
@@ -529,6 +630,7 @@ def list_jobs():
                 "source": job.get("source", ""),
                 "duration": job.get("duration"),
                 "progress": job.get("progress", 0),
+                "phase": job.get("phase"),
             }
             for jid, job in jobs.items()
             if job.get("status") in ("downloading", "paused")
@@ -616,6 +718,13 @@ if __name__ == "__main__":
     recover_jobs()
     port = int(os.environ.get("PORT", 8899))
     host = os.environ.get("HOST", "127.0.0.1")
+
+    if host not in ("127.0.0.1", "localhost", "::1"):
+        print(
+            f"\n  !! ReClip has NO authentication. Bound to {host}:{port} — anyone who can\n"
+            f"     reach this machine on that port can download through your IP and read\n"
+            f"     your downloads/ folder. Use the default 127.0.0.1 unless you mean this.\n"
+        )
 
     def open_browser():
         try:
