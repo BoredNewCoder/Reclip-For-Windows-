@@ -21,11 +21,24 @@ First run downloads everything automatically (~80MB). Your browser opens when re
 
 1. Paste one or more URLs into the input box
 2. Choose **MP4** (video) or **MP3** (audio)
-3. Click **Fetch** — shows available formats with quality, codec, and file size
-4. Select quality (higher resolution = larger file)
-5. *(optional)* Fill in **Clip** start / end times to download just a section
-6. Click **Download** — real-time progress bar shows download % · file saves to `downloads\` folder
-7. Click **Pause** to pause a download and resume it later — or **Cancel** to stop and discard it
+3. *(optional)* Toggle **Subtitles (EN)**, pick a **Codec** preference
+4. Click **Fetch** — shows available formats with quality, codec, and file size
+5. Select quality (higher resolution = larger file)
+6. *(optional)* Fill in **Clip** start / end times to download just a section
+7. Click **Download** — real-time progress bar shows download % · file saves to `downloads\` folder
+8. Click **Pause** to pause a download and resume it later — or **Cancel** to stop and discard it
+
+### Subtitles
+
+The **Subtitles (EN)** toggle grabs English captions (auto-generated when there's no
+human track). You get both: a `.srt` file next to the video, and — for MP4 — the track
+embedded in the file itself.
+
+### Codec preference
+
+**Codec: Auto / H.264 / AV1 / VP9.** H.264 is the most compatible (every player and
+editor); AV1 and VP9 are smaller but pickier. Picking a codec grabs the best quality
+available *in that codec* — so it takes over from the per-video quality buttons.
 
 ### Clipping
 
@@ -49,6 +62,8 @@ Downloads are saved to the `downloads\` folder inside the ReClip directory.
 ## Features
 
 - **Clip a section** — download just the part you want, by start/end time (mp4 or mp3)
+- **Subtitles** — English `.srt` sidecar + embedded track (MP4)
+- **Codec preference** — force H.264 for compatibility, or AV1/VP9 for smaller files
 - **Remove Sponsors** — automatically skips sponsor segments via SponsorBlock (YouTube)
 - **Bypass Detection** — uses [curl-cffi](https://github.com/lexiforest/curl-cffi) to impersonate Chrome's TLS fingerprint, bypassing bot detection on sites like YouTube that block standard download tools
 - **Dark mode** — click the sun/moon icon top-right; respects OS setting, persists across sessions
@@ -93,7 +108,7 @@ you do. Leave it on localhost unless you know what you're doing.
 - Pause/resume works within the same browser session; closing the tab while paused is safe (state survives server restart)
 - Platform chips at the bottom are clickable — open each site in a new tab; **1000+ more** links to the full yt-dlp supported sites list
 - Supports 1000+ sites via [yt-dlp](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md)
-- yt-dlp updates automatically on each launch
+- yt-dlp updates automatically on each launch — the running version shows in the footer, with an **update now** link if you leave ReClip open for a while
 - Python and FFmpeg are self-contained in `python\` — nothing installed system-wide
 - Re-launching `reclip.bat` clears any stale server process
 
