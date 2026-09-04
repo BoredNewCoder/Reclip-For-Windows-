@@ -23,17 +23,32 @@ First run downloads everything automatically (~80MB). Your browser opens when re
 2. Choose **MP4** (video) or **MP3** (audio)
 3. Click **Fetch** — shows available formats with quality, codec, and file size
 4. Select quality (higher resolution = larger file)
-5. Click **Download** — real-time progress bar shows download % · file saves to `downloads\` folder
-6. Click **Pause** to pause a download and resume it later — or **Cancel** to stop and discard it
+5. *(optional)* Fill in **Clip** start / end times to download just a section
+6. Click **Download** — real-time progress bar shows download % · file saves to `downloads\` folder
+7. Click **Pause** to pause a download and resume it later — or **Cancel** to stop and discard it
+
+### Clipping
+
+Each result card has an optional **Clip** row — a start and an end time. Leave both
+blank for the whole video; fill one or both to grab just a section:
+
+- Formats accepted: `90` (seconds), `1:30` (mm:ss), or `1:02:03` (hh:mm:ss)
+- Start only → from that point to the end · End only → from the beginning to that point
+- Cuts are frame-accurate (`--force-keyframes-at-cuts`)
+- Works for MP4 **and** MP3 · clipped files get a ` [clip]` name suffix
 
 ### Batch Downloads
 
-Paste multiple URLs (spaces, commas, or newlines), then click **Download All** — all downloads run simultaneously with live progress per item.
+Paste multiple URLs (spaces, commas, or newlines), then click **Download All**. Every
+item is queued at once, but only a few download at a time (default 3 — set
+`MAX_CONCURRENT` to change) so a long list doesn't hammer your machine or trip bot
+detection. Queued items show a **Queued** state; live progress per item.
 
 Downloads are saved to the `downloads\` folder inside the ReClip directory.
 
 ## Features
 
+- **Clip a section** — download just the part you want, by start/end time (mp4 or mp3)
 - **Remove Sponsors** — automatically skips sponsor segments via SponsorBlock (YouTube)
 - **Bypass Detection** — uses [curl-cffi](https://github.com/lexiforest/curl-cffi) to impersonate Chrome's TLS fingerprint, bypassing bot detection on sites like YouTube that block standard download tools
 - **Dark mode** — click the sun/moon icon top-right; respects OS setting, persists across sessions
@@ -59,6 +74,13 @@ The cookie icon turns green when active. Click again to remove.
 ```
 set PORT=9000 && reclip.bat
 ```
+
+## Network Access
+
+ReClip binds to `127.0.0.1` (this machine only) and has **no authentication**. If you
+override `HOST` to expose it on your network, anyone who can reach the port can
+download through your IP and read your `downloads\` folder — it prints a warning when
+you do. Leave it on localhost unless you know what you're doing.
 
 ## Notes
 
